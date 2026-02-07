@@ -5,16 +5,30 @@ This module orchestrates the extraction of PR evolution data:
 1. Fetches merged PRs with review comments
 2. Extracts the "correction logic" (what was wrong → how it was fixed)
 3. Outputs JSONL training data
+
+UPDATED: Addressed code review feedback:
+1. Fixed diff hunk extraction to capture BOTH removed (-) and added (+) lines
+2. Fixed fixed_code retrieval to extract only relevant hunk, not entire file
+3. Added quality score filtering
+4. Added security audit for training data
 """
 
 import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Iterator
+from typing import List, Optional, Iterator, Tuple
 from tqdm import tqdm
 
-from .config import ExtractionConfig, RepoConfig, CORRECTION_PATTERNS
+from .config import (
+    ExtractionConfig, 
+    RepoConfig, 
+    CORRECTION_PATTERNS_STRONG,
+    calculate_quality_score,
+    check_for_secrets,
+    check_for_vulnerabilities,
+    SUGGESTION_PATTERN,
+)
 from .github_client import (
     GitHubClient, 
     PREvolution, 
@@ -50,52 +64,102 @@ def categorize_comment(comment: str) -> str:
     comment_lower = comment.lower()
     
     # Priority order matters - check most specific first
-    if any(p in comment_lower for p in ["security", "vulnerability", "injection", "xss", "csrf"]):
+    if any(p in comment_lower for p in [
+        "security", "vulnerability", "injection", "xss", "csrf",
+        "sanitize", "validate", "escape"
+    ]):
         return "security"
     
-    if any(p in comment_lower for p in ["error", "handle", "panic", "recover"]):
+    if any(p in comment_lower for p in [
+        "error", "handle", "panic", "recover", "wrap the error",
+        "check the error", "return the error"
+    ]):
         return "error_handling"
     
-    if any(p in comment_lower for p in ["test", "coverage", "mock", "assert"]):
+    if any(p in comment_lower for p in [
+        "test coverage", "add a test", "unit test", "mock", "assert"
+    ]):
         return "testing"
     
-    if any(p in comment_lower for p in ["performance", "memory", "allocate", "goroutine", "async"]):
+    if any(p in comment_lower for p in [
+        "performance", "memory", "allocate", "goroutine", "async",
+        "mutex", "race condition", "buffer"
+    ]):
         return "performance"
     
-    if any(p in comment_lower for p in ["interface", "abstract", "dependency", "couple", "layer"]):
+    if any(p in comment_lower for p in [
+        "interface", "abstract", "dependency injection", "coupling",
+        "single responsibility", "layer", "extract this"
+    ]):
         return "architecture"
     
-    if any(p in comment_lower for p in ["convention", "style", "naming", "format"]):
+    if any(p in comment_lower for p in [
+        "convention", "style", "naming", "format", "we usually"
+    ]):
         return "style"
     
-    if any(p in comment_lower for p in ["internal/", "pkg/", "module", "package"]):
+    if any(p in comment_lower for p in [
+        "internal/", "pkg/", "move this to", "belongs in", "package"
+    ]):
         return "project_structure"
     
     return "general"
 
 
-def extract_code_from_diff_hunk(diff_hunk: str) -> tuple[str, str]:
+def extract_code_from_diff_hunk(diff_hunk: str) -> Tuple[str, str, str]:
     """
-    Extract the 'before' and 'after' code from a diff hunk.
+    Extract the 'original', 'added', and 'context' code from a diff hunk.
     
-    Returns: (original_code, context_lines)
+    FIXED: Now correctly captures BOTH removed (-) and added (+) lines.
+    
+    Returns: (original_code, added_code, context_lines)
+    - original_code: Lines that were removed (the "before")
+    - added_code: Lines that were added (the "after" / fix)
+    - context_lines: Unchanged context lines
     """
     lines = diff_hunk.split('\n')
-    original_lines = []
-    context_lines = []
+    original_lines = []  # Lines starting with '-' (removed)
+    added_lines = []     # Lines starting with '+' (added) - THIS WAS MISSING
+    context_lines = []   # Lines starting with ' ' (unchanged)
     
     for line in lines:
-        if line.startswith('-') and not line.startswith('---'):
-            # Removed line (original code)
-            original_lines.append(line[1:])  # Remove the '-'
-        elif line.startswith('+') and not line.startswith('+++'):
-            # Added line (we'll get this from the fixed version)
-            pass
-        elif line.startswith(' ') or (not line.startswith('@') and line):
-            # Context line
-            context_lines.append(line[1:] if line.startswith(' ') else line)
+        # Skip diff header lines
+        if line.startswith('@@') or line.startswith('diff ') or line.startswith('index '):
+            continue
+        if line.startswith('---') or line.startswith('+++'):
+            continue
+            
+        if line.startswith('-'):
+            # Removed line (original code that was wrong)
+            original_lines.append(line[1:])  # Remove the '-' prefix
+        elif line.startswith('+'):
+            # Added line (the fix!) - CRITICAL FIX
+            added_lines.append(line[1:])  # Remove the '+' prefix
+        elif line.startswith(' '):
+            # Context line (unchanged)
+            context_lines.append(line[1:])  # Remove the ' ' prefix
+        elif line and not line.startswith('\\'):
+            # Line without prefix (some diff formats)
+            context_lines.append(line)
     
-    return '\n'.join(original_lines), '\n'.join(context_lines)
+    return (
+        '\n'.join(original_lines),
+        '\n'.join(added_lines),
+        '\n'.join(context_lines)
+    )
+
+
+def extract_suggestion_code(comment_body: str) -> Optional[str]:
+    """
+    Extract code from GitHub's ```suggestion blocks.
+    
+    These are the highest quality fixes because they're explicit
+    code suggestions from the reviewer.
+    """
+    match = SUGGESTION_PATTERN.search(comment_body)
+    if match:
+        return match.group(1).strip()
+    return None
 
 
 class PREvolutionExtractor:
@@ -109,6 +173,16 @@ class PREvolutionExtractor:
     def __init__(self, config: ExtractionConfig):
         self.config = config
         self.client = GitHubClient(config)
+        
+        # Stats for reporting
+        self.stats = {
+            "prs_processed": 0,
+            "comments_processed": 0,
+            "samples_extracted": 0,
+            "skipped_low_quality": 0,
+            "skipped_too_short": 0,
+            "skipped_secrets": 0,
+        }
     
     def extract_from_repo(
         self, 
@@ -127,12 +201,15 @@ class PREvolutionExtractor:
         repo = self.client.get_repo(repo_config)
         output_file = output_dir / f"{repo_config.owner}_{repo_config.repo}.jsonl"
         
-        samples_count = 0
+        # Reset stats for this repo
+        self.stats = {k: 0 for k in self.stats}
         
         with open(output_file, 'w', encoding='utf-8') as f:
             prs = self.client.get_merged_prs(repo, limit=repo_config.max_prs)
             
             for pr in tqdm(prs, desc="Processing PRs"):
+                self.stats["prs_processed"] += 1
+                
                 evolutions = self._extract_evolutions_from_pr(
                     repo, pr, repo_config
                 )
@@ -140,10 +217,19 @@ class PREvolutionExtractor:
                 for evolution in evolutions:
                     json_line = json.dumps(evolution.to_jsonl(), ensure_ascii=False)
                     f.write(json_line + '\n')
-                    samples_count += 1
+                    self.stats["samples_extracted"] += 1
         
-        print(f"✅ Extracted {samples_count} training samples → {output_file}")
-        return samples_count
+        # Print stats
+        print(f"\n📊 Extraction Stats for {repo_config.full_name}:")
+        print(f"   PRs processed: {self.stats['prs_processed']}")
+        print(f"   Comments processed: {self.stats['comments_processed']}")
+        print(f"   ✅ Samples extracted: {self.stats['samples_extracted']}")
+        print(f"   ⏭️  Skipped (low quality): {self.stats['skipped_low_quality']}")
+        print(f"   ⏭️  Skipped (too short): {self.stats['skipped_too_short']}")
+        print(f"   🔒 Skipped (secrets detected): {self.stats['skipped_secrets']}")
+        print(f"   → Output: {output_file}")
+        
+        return self.stats["samples_extracted"]
     
     def _extract_evolutions_from_pr(
         self,
@@ -160,54 +246,81 @@ class PREvolutionExtractor:
         # Get review comments
         comments = self.client.get_pr_review_comments(pr)
         
-        # Filter for comments that contain correction logic
-        valuable_comments = [
-            c for c in comments 
-            if c.contains_correction(CORRECTION_PATTERNS)
-        ]
-        
-        if not valuable_comments:
-            return
-        
-        # Get file diffs
+        # Get file diffs for context
         files = self.client.get_pr_files(pr)
         file_map = {f.filename: f for f in files}
         
-        # For each valuable comment, create a training sample
-        for comment in valuable_comments:
+        # Process each comment
+        for comment in comments:
+            self.stats["comments_processed"] += 1
+            
+            # QUALITY FILTER 1: Minimum length
+            if len(comment.body) < self.config.min_comment_length:
+                self.stats["skipped_too_short"] += 1
+                continue
+            
+            # QUALITY FILTER 2: Quality score
+            quality_score = calculate_quality_score(comment.body)
+            if quality_score < self.config.min_quality_score:
+                self.stats["skipped_low_quality"] += 1
+                continue
+            
             if comment.path not in file_map:
                 continue
             
             file_diff = file_map[comment.path]
             
-            # Extract original code from the diff hunk
-            original_code, context = extract_code_from_diff_hunk(comment.diff_hunk)
+            # Extract code from the diff hunk (FIXED)
+            original_code, added_code, context = extract_code_from_diff_hunk(
+                comment.diff_hunk
+            )
             
-            if not original_code.strip():
-                # No removals, might be an addition-only review
-                original_code = context
+            # SECURITY AUDIT: Check for secrets in the code
+            secrets_original = check_for_secrets(original_code)
+            secrets_added = check_for_secrets(added_code)
+            if secrets_original or secrets_added:
+                self.stats["skipped_secrets"] += 1
+                print(f"   ⚠️  Skipped comment (secrets detected): PR#{pr.number}")
+                continue
             
-            # Try to get the fixed version from the merge commit
+            # Determine the "fixed" code:
+            # Priority 1: GitHub suggestion block (highest quality)
+            # Priority 2: Added lines from diff hunk
+            # Priority 3: Full file at merge commit (last resort, less useful)
             fixed_code = None
-            if pr.merge_commit_sha:
-                fixed_code = self.client.get_file_content_at_commit(
-                    repo, comment.path, pr.merge_commit_sha
-                )
+            
+            # Try to get suggestion block first
+            suggestion = extract_suggestion_code(comment.body)
+            if suggestion:
+                fixed_code = suggestion
+            elif added_code.strip():
+                # Use the added lines from the diff (the actual fix!)
+                fixed_code = added_code
+            
+            # If no local fix found, we DON'T fetch the entire file
+            # (That was the bug - entire file is useless as training data)
+            if not fixed_code:
+                continue  # Skip if we can't get a localized fix
             
             # Categorize the lesson
             category = categorize_comment(comment.body)
+            
+            # Check for vulnerabilities (warn but include for learning)
+            vulns = check_for_vulnerabilities(original_code)
             
             yield PREvolution(
                 repo=repo_config.full_name,
                 pr_number=pr.number,
                 pr_title=pr.title,
                 pr_description=pr.body or "",
-                original_code=original_code,
+                original_code=original_code if original_code.strip() else context,
                 file_path=comment.path,
                 reviewer_comment=comment.body,
                 fixed_code=fixed_code,
                 lesson_category=category,
-                language=detect_language(comment.path)
+                language=detect_language(comment.path),
+                quality_score=quality_score,
+                has_vulnerability=len(vulns) > 0,
             )
     
     def extract_from_multiple_repos(

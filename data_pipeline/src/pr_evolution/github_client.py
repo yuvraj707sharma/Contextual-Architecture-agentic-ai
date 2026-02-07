@@ -84,6 +84,12 @@ class PREvolution:
     # Language of the code
     language: str
     
+    # Quality score (0-100) - higher = more valuable for training
+    quality_score: int = 0
+    
+    # Flag if the original code had vulnerability patterns
+    has_vulnerability: bool = False
+    
     def to_jsonl(self) -> Dict[str, Any]:
         """Convert to JSONL format for training."""
         return {
@@ -96,6 +102,8 @@ class PREvolution:
             "fixed_code": self.fixed_code,
             "lesson_category": self.lesson_category,
             "language": self.language,
+            "quality_score": self.quality_score,
+            "has_vulnerability": self.has_vulnerability,
             "metadata": {
                 "pr_title": self.pr_title,
                 "pr_description": self.pr_description[:500] if self.pr_description else ""
