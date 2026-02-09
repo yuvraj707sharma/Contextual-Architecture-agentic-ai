@@ -5,7 +5,8 @@ This is the "conductor" that:
 1. Takes a user request
 2. Runs Historian → Architect → Implementer → Reviewer
 3. Handles the rejection loop if code fails review
-4. Returns the final generated code
+4. Uses SafeCodeWriter for permission-based file writing
+5. Returns the final generated code
 """
 
 import asyncio
@@ -16,6 +17,11 @@ from pathlib import Path
 from .base import AgentContext, AgentResponse, AgentRole
 from .historian import HistorianAgent
 from .architect import ArchitectAgent
+from .implementer import ImplementerAgent
+from .reviewer import ReviewerAgent, ValidationResult
+from .safe_writer import SafeCodeWriter, ChangeSet
+from .style_fingerprint import StyleAnalyzer
+from .llm_client import BaseLLMClient
 
 
 @dataclass
@@ -34,11 +40,20 @@ class OrchestrationResult:
     # Combined context from all agents
     context: Dict[str, Any] = field(default_factory=dict)
     
+    # Validation result
+    validation: Optional[ValidationResult] = None
+    
+    # ChangeSet for safe writing
+    changeset: Optional[ChangeSet] = None
+    
     # Errors encountered
     errors: List[str] = field(default_factory=list)
     
     # Summary of what each agent did
     agent_summaries: Dict[str, str] = field(default_factory=dict)
+    
+    # Number of generation attempts
+    attempts: int = 1
 
 
 class Orchestrator:
@@ -47,26 +62,38 @@ class Orchestrator:
     
     Pipeline:
     1. Historian: Gather patterns and conventions
-    2. Architect: Map structure and find utilities
-    3. Implementer: Generate code (with LLM or placeholder)
-    4. Reviewer: Validate code (optional)
+    2. Style Analyzer: Extract exact coding style
+    3. Architect: Map structure and find utilities
+    4. Implementer: Generate code with LLM
+    5. Reviewer: Validate code (syntax, security, lint)
+    6. SafeWriter: Plan safe file modifications
+    
+    If Reviewer fails, feed errors back to Implementer and retry.
     """
     
-    def __init__(self, llm_client=None, max_retries: int = 3):
+    def __init__(
+        self, 
+        llm_client: Optional[BaseLLMClient] = None, 
+        max_retries: int = 3,
+        auto_approve_new_files: bool = True,
+    ):
         """
         Initialize the orchestrator.
         
         Args:
-            llm_client: LLM client for Implementer/Reviewer
+            llm_client: LLM client for Implementer
             max_retries: Max rejection loop iterations
+            auto_approve_new_files: Auto-approve creation of new files
         """
         self.llm_client = llm_client
         self.max_retries = max_retries
+        self.auto_approve_new_files = auto_approve_new_files
         
         # Initialize agents
         self.historian = HistorianAgent()
         self.architect = ArchitectAgent()
-        # Implementer and Reviewer will be added later
+        self.implementer = ImplementerAgent(llm_client)
+        self.reviewer = ReviewerAgent()
     
     async def run(
         self, 
@@ -83,7 +110,7 @@ class Orchestrator:
             language: Programming language
             
         Returns:
-            OrchestrationResult with generated code or errors
+            OrchestrationResult with generated code and changeset
         """
         result = OrchestrationResult(success=False)
         
@@ -98,7 +125,15 @@ class Orchestrator:
         print(f"   Repo: {repo_path}")
         print(f"   Language: {language}")
         
-        # Step 1: Run Historian
+        # Step 1: Analyze project style
+        print("\n🎨 Analyzing project style...")
+        style_analyzer = StyleAnalyzer(repo_path, language)
+        style_fingerprint = style_analyzer.analyze()
+        context.prior_context["style_fingerprint"] = style_fingerprint
+        print(f"   ✓ Style: {style_fingerprint.function_naming} functions, "
+              f"{style_fingerprint.logger_library} logging")
+        
+        # Step 2: Run Historian
         print("\n📜 Running Historian Agent...")
         historian_response = await self.historian.process(context)
         
@@ -110,7 +145,7 @@ class Orchestrator:
         context.prior_context["historian"] = historian_response.data
         print(f"   ✓ {historian_response.summary}")
         
-        # Step 2: Run Architect
+        # Step 3: Run Architect
         print("\n🏗️  Running Architect Agent...")
         architect_response = await self.architect.process(context)
         
@@ -123,287 +158,145 @@ class Orchestrator:
         result.target_file = architect_response.data.get("target_file", "")
         print(f"   ✓ {architect_response.summary}")
         
-        # Step 3: Generate code (placeholder until Implementer is built)
-        print("\n💻 Generating code...")
+        # Step 4: Generate and validate code (with retry loop)
+        print("\n💻 Generating code with Implementer...")
         
-        if self.llm_client:
-            # Use LLM to generate code
-            code = await self._generate_with_llm(context)
-        else:
-            # Generate placeholder code
-            code = self._generate_placeholder_code(
-                context, 
-                architect_response.data
+        for attempt in range(1, self.max_retries + 1):
+            result.attempts = attempt
+            
+            # Generate code
+            impl_response = await self.implementer.process(context)
+            
+            if not impl_response.success:
+                result.errors.append(f"Implementer failed: {impl_response.summary}")
+                continue
+            
+            generated_code = impl_response.data.get("code", "")
+            target_file = impl_response.data.get("file_path", result.target_file)
+            
+            print(f"   ✓ Generated {len(generated_code)} chars (attempt {attempt})")
+            
+            # Validate with Reviewer
+            print("\n🔍 Validating with Reviewer...")
+            validation = await self.reviewer.validate(
+                code=generated_code,
+                file_path=target_file,
+                language=language,
+                repo_path=repo_path,
             )
+            
+            result.validation = validation
+            result.agent_summaries["reviewer"] = validation.summary
+            
+            if validation.passed:
+                print(f"   ✓ {validation.summary}")
+                result.generated_code = generated_code
+                result.target_file = target_file
+                break
+            else:
+                print(f"   ⚠️ {validation.summary}")
+                # Feed errors back for next attempt
+                context.prior_context["validation_errors"] = validation.to_prompt_feedback()
+                
+                if attempt < self.max_retries:
+                    print(f"   🔄 Retrying ({attempt}/{self.max_retries})...")
         
-        result.generated_code = code
-        result.context = {
-            "historian": historian_response.data,
-            "architect": architect_response.data,
-        }
-        result.success = True
+        # Step 5: Plan safe changes
+        if result.generated_code:
+            print("\n📦 Planning safe file changes...")
+            safe_writer = SafeCodeWriter(repo_path)
+            changeset = safe_writer.plan_changes(
+                generated_files={result.target_file: result.generated_code},
+                language=language,
+            )
+            result.changeset = changeset
+            result.context = {
+                "historian": context.prior_context.get("historian", {}),
+                "architect": context.prior_context.get("architect", {}),
+                "style": style_fingerprint.to_dict(),
+            }
+            result.success = True
+            
+            print(f"   ✓ {len(changeset.changes)} changes planned")
+            print(f"   ✓ {len(changeset.untouched_files)} files preserved")
         
-        print(f"\n✅ Orchestration complete!")
-        print(f"   Target file: {result.target_file}")
-        print(f"   Generated {len(code)} characters of code")
+        print(f"\n{'✅' if result.success else '❌'} Orchestration complete!")
+        if result.target_file:
+            print(f"   Target file: {result.target_file}")
         
         return result
     
-    async def _generate_with_llm(self, context: AgentContext) -> str:
-        """Generate code using the LLM client."""
-        # Build the prompt from aggregated context
-        prompt = self._build_implementation_prompt(context)
-        
-        # Call LLM (placeholder for now)
-        # response = await self.llm_client.generate(prompt)
-        # return response.text
-        
-        return "# LLM generation not yet implemented"
-    
-    def _generate_placeholder_code(
+    async def apply_changes(
         self, 
-        context: AgentContext,
-        architect_data: Dict[str, Any]
-    ) -> str:
-        """Generate placeholder code when no LLM is available."""
+        changeset: ChangeSet,
+        repo_path: str
+    ) -> Dict[str, Any]:
+        """
+        Apply approved changes to the filesystem.
         
-        target_file = architect_data.get("target_file", "feature.py")
-        imports_needed = architect_data.get("imports_needed", [])
-        utilities = architect_data.get("existing_utilities", [])
-        
-        historian_data = context.prior_context.get("historian", {})
-        patterns = historian_data.get("patterns", [])
-        conventions = historian_data.get("conventions", {})
-        
-        language = context.language
-        
-        if language == "python":
-            return self._generate_python_placeholder(
-                context.user_request, imports_needed, utilities, patterns, conventions
-            )
-        elif language == "go":
-            return self._generate_go_placeholder(
-                context.user_request, imports_needed, utilities, patterns, conventions
-            )
-        elif language in ("typescript", "javascript"):
-            return self._generate_ts_placeholder(
-                context.user_request, imports_needed, utilities, patterns, conventions
-            )
-        
-        return f"# Placeholder for: {context.user_request}"
+        Args:
+            changeset: ChangeSet with approved changes
+            repo_path: Path to the repository
+            
+        Returns:
+            Report of applied/skipped changes
+        """
+        safe_writer = SafeCodeWriter(repo_path)
+        return safe_writer.apply_changes(changeset)
     
-    def _generate_python_placeholder(
-        self,
-        request: str,
-        imports: List[str],
-        utilities: List[Dict],
-        patterns: List[Dict],
-        conventions: Dict[str, str]
-    ) -> str:
-        """Generate Python placeholder code."""
-        lines = [
-            '"""',
-            f'Generated code for: {request}',
-            '',
-            'Detected conventions:',
-        ]
+    def show_changes(self, result: OrchestrationResult) -> str:
+        """
+        Display the proposed changes for user review.
         
-        for key, value in conventions.items():
-            lines.append(f'- {key}: {value}')
+        Args:
+            result: OrchestrationResult from run()
+            
+        Returns:
+            Formatted string showing all proposed changes
+        """
+        if not result.changeset:
+            return "No changes to display."
         
-        lines.append('"""')
-        lines.append('')
-        
-        # Imports
-        for imp in imports:
-            lines.append(f'from {imp} import *  # TODO: specific imports')
-        
-        if imports:
-            lines.append('')
-        
-        # Reference utilities
-        if utilities:
-            lines.append('# Existing utilities to reuse:')
-            for util in utilities[:3]:
-                lines.append(f'# - {util["name"]} from {util["file"]}')
-            lines.append('')
-        
-        # Placeholder implementation
-        feature_name = request.split()[1] if len(request.split()) > 1 else "feature"
-        lines.extend([
-            f'def {feature_name.lower()}():',
-            f'    """Implement: {request}"""',
-            '    # TODO: Implement based on detected patterns',
-        ])
-        
-        if patterns:
-            lines.append(f'    # Following pattern: {patterns[0].get("pattern_type", "unknown")}')
-        
-        lines.append('    pass')
-        
-        return '\n'.join(lines)
-    
-    def _generate_go_placeholder(
-        self,
-        request: str,
-        imports: List[str],
-        utilities: List[Dict],
-        patterns: List[Dict],
-        conventions: Dict[str, str]
-    ) -> str:
-        """Generate Go placeholder code."""
-        lines = [
-            f'// Generated code for: {request}',
-            '//',
-            '// Detected conventions:',
-        ]
-        
-        for key, value in conventions.items():
-            lines.append(f'// - {key}: {value}')
-        
-        lines.extend([
-            '',
-            'package main  // TODO: adjust package',
-            '',
-        ])
-        
-        # Imports
-        if imports:
-            lines.append('import (')
-            for imp in imports:
-                lines.append(f'\t"{imp}"')
-            lines.append(')')
-            lines.append('')
-        
-        # Placeholder function
-        feature_name = request.split()[1].title() if len(request.split()) > 1 else "Feature"
-        lines.extend([
-            f'// {feature_name} implements: {request}',
-            f'func {feature_name}() error {{',
-            '\t// TODO: Implement based on detected patterns',
-        ])
-        
-        if patterns:
-            lines.append(f'\t// Following pattern: {patterns[0].get("pattern_type", "unknown")}')
-        
-        lines.extend([
-            '\treturn nil',
-            '}',
-        ])
-        
-        return '\n'.join(lines)
-    
-    def _generate_ts_placeholder(
-        self,
-        request: str,
-        imports: List[str],
-        utilities: List[Dict],
-        patterns: List[Dict],
-        conventions: Dict[str, str]
-    ) -> str:
-        """Generate TypeScript placeholder code."""
-        lines = [
-            f'/**',
-            f' * Generated code for: {request}',
-            f' *',
-            f' * Detected conventions:',
-        ]
-        
-        for key, value in conventions.items():
-            lines.append(f' * - {key}: {value}')
-        
-        lines.extend([
-            ' */',
-            '',
-        ])
-        
-        # Imports
-        for imp in imports:
-            lines.append(f"import {{ /* TODO */ }} from '{imp}';")
-        
-        if imports:
-            lines.append('')
-        
-        # Placeholder function
-        feature_name = request.split()[1] if len(request.split()) > 1 else "feature"
-        feature_name = feature_name[0].lower() + feature_name[1:] if feature_name else "feature"
-        
-        lines.extend([
-            f'/**',
-            f' * {request}',
-            f' */',
-            f'export async function {feature_name}(): Promise<void> {{',
-            '  // TODO: Implement based on detected patterns',
-        ])
-        
-        if patterns:
-            lines.append(f'  // Following pattern: {patterns[0].get("pattern_type", "unknown")}')
-        
-        lines.extend([
-            '}',
-        ])
-        
-        return '\n'.join(lines)
-    
-    def _build_implementation_prompt(self, context: AgentContext) -> str:
-        """Build an LLM prompt from aggregated context."""
-        
-        historian = context.prior_context.get("historian", {})
-        architect = context.prior_context.get("architect", {})
-        
-        prompt = f"""You are implementing the following feature:
-
-## User Request
-{context.user_request}
-
-## Repository
-Path: {context.repo_path}
-Language: {context.language}
-
-## Detected Patterns
-{historian.get("patterns", [])}
-
-## Conventions to Follow
-{historian.get("conventions", {})}
-
-## Common Mistakes to Avoid
-{historian.get("common_mistakes", [])}
-
-## Target Location
-File: {architect.get("target_file", "")}
-Package: {architect.get("target_package", "")}
-
-## Existing Utilities to Reuse
-{architect.get("existing_utilities", [])}
-
-## Required Imports
-{architect.get("imports_needed", [])}
-
-Generate production-ready code that:
-1. Follows the detected conventions
-2. Avoids the common mistakes
-3. Reuses existing utilities where appropriate
-4. Is placed in the suggested target location
-"""
-        return prompt
+        return result.changeset.to_user_prompt()
 
 
 async def demo():
     """Demo the orchestrator on the current project."""
+    print("=" * 60)
+    print("CONTEXTUAL ARCHITECT - DEMO")
+    print("=" * 60)
+    
     orchestrator = Orchestrator()
     
     result = await orchestrator.run(
-        user_request="Add authentication middleware",
+        user_request="Add authentication middleware that validates JWT tokens",
         repo_path="E:/FUn/contextual-architect",
         language="python"
     )
     
-    print("\n" + "="*60)
-    print("RESULT:")
-    print("="*60)
+    print("\n" + "=" * 60)
+    print("ORCHESTRATION RESULT")
+    print("=" * 60)
     print(f"Success: {result.success}")
     print(f"Target: {result.target_file}")
-    print(f"\nGenerated Code:\n{result.generated_code}")
+    print(f"Attempts: {result.attempts}")
+    
+    if result.validation:
+        print(f"\nValidation: {result.validation.summary}")
+    
+    if result.changeset:
+        print("\n" + "=" * 60)
+        print("PROPOSED CHANGES")
+        print("=" * 60)
+        print(orchestrator.show_changes(result))
+    
+    if result.generated_code:
+        print("\n" + "=" * 60)
+        print("GENERATED CODE PREVIEW (first 500 chars)")
+        print("=" * 60)
+        print(result.generated_code[:500])
+        if len(result.generated_code) > 500:
+            print(f"... ({len(result.generated_code) - 500} more chars)")
 
 
 if __name__ == "__main__":

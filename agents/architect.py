@@ -8,11 +8,10 @@ The Architect Agent is the "navigator" of the system. It:
 4. Maps dependency relationships
 """
 
-import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Set
+from typing import List, Dict, Any, Optional
 
 from .base import BaseAgent, AgentContext, AgentResponse, AgentRole
 
@@ -366,7 +365,8 @@ Return a JSON object with:
         
         # Default: src/ or internal/ or root
         if (repo_path / "internal").exists():
-            return "internal/feature.go", "internal"
+            ext = ".go" if language == "go" else ".py" if language == "python" else ".ts"
+            return f"internal/feature{ext}", "internal"
         if (repo_path / "src").exists():
             ext = ".py" if language == "python" else ".ts"
             return f"src/feature{ext}", "src"

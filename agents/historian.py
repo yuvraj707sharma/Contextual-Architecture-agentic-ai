@@ -11,7 +11,6 @@ The Historian Agent is the "memory" of the system. It:
 import re
 from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional
-import json
 
 from .base import BaseAgent, AgentContext, AgentResponse, AgentRole
 
@@ -191,7 +190,7 @@ Return a JSON object with:
                 output.relevant_prs = await self._search_relevant_prs(context)
             
             # Step 2: Analyze local files for patterns
-            if context.target_files:
+            if context.repo_path:
                 local_patterns = await self._analyze_local_patterns(context)
                 output.patterns.extend(local_patterns)
             
@@ -508,7 +507,7 @@ Return a JSON object with:
                 for pattern, name in lang_patterns:
                     if re.search(pattern, content):
                         return name
-            except:
+            except Exception:
                 continue
         
         return "unknown"
@@ -521,7 +520,7 @@ Return a JSON object with:
                 content = (repo_path / "pyproject.toml").read_text(errors='ignore')
                 if "pytest" in content:
                     return "pytest"
-            except:
+            except Exception:
                 pass
         
         if (repo_path / "jest.config.js").exists() or (repo_path / "jest.config.ts").exists():
