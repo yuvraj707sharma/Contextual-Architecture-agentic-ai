@@ -12,9 +12,12 @@ import json
 import os
 import zipfile
 from pathlib import Path
-from typing import Iterator, Dict, Any
+from typing import Iterator, Dict, Any, Optional
 import requests
 from tqdm import tqdm
+
+# Import shared utilities
+from ..utils import detect_language_from_code, categorize_comment
 
 
 # CodeReviewer dataset URLs (from Zenodo)
@@ -28,8 +31,15 @@ TARGET_LANGUAGES = {"go", "python", "javascript", "typescript"}
 
 
 def download_file(url: str, output_path: Path) -> None:
-    """Download a file with progress bar."""
-    response = requests.get(url, stream=True)
+    """
+    Download a file with progress bar.
+    
+    Raises:
+        requests.HTTPError: If the download fails (404, 500, etc.)
+    """
+    response = requests.get(url, stream=True, timeout=60)
+    response.raise_for_status()  # FIX: Raise exception on HTTP errors
+    
     total_size = int(response.headers.get('content-length', 0))
     
     with open(output_path, 'wb') as f:
@@ -47,30 +57,28 @@ def extract_zip(zip_path: Path, extract_to: Path) -> None:
     print(f"   → Extracted to {extract_to}")
 
 
-def detect_language_from_code(code: str) -> str:
-    """Heuristic language detection from code content."""
-    code_lower = code.lower()
+def get_language_from_sample(sample: Dict[str, Any], code: str) -> str:
+    """
+    Get language from sample, using multiple sources.
     
-    # Go indicators
-    if "func " in code and ("package " in code or ":= " in code):
-        return "go"
+    Priority:
+    1. Explicit 'lang' or 'language' field in sample
+    2. File path extension
+    3. Code content heuristics
+    """
+    # Check for explicit language field
+    lang = sample.get("lang") or sample.get("language")
+    if lang:
+        return lang.lower()
     
-    # Python indicators
-    if "def " in code and ":" in code:
-        return "python"
-    if "import " in code and "from " in code:
-        return "python"
+    # Check for file path
+    file_path = sample.get("path") or sample.get("file_path") or sample.get("filename")
     
-    # TypeScript/JavaScript indicators
-    if "const " in code or "let " in code or "function " in code:
-        if ": " in code and ("string" in code_lower or "number" in code_lower):
-            return "typescript"
-        return "javascript"
-    
-    return "unknown"
+    # Use the improved detection from utils
+    return detect_language_from_code(code, file_path)
 
 
-def convert_refinement_sample(sample: Dict[str, Any]) -> Dict[str, Any]:
+def convert_refinement_sample(sample: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """
     Convert a CodeReviewer refinement sample to our format.
     
@@ -78,7 +86,8 @@ def convert_refinement_sample(sample: Dict[str, Any]) -> Dict[str, Any]:
     {
         "old_code": "...",
         "new_code": "...",  
-        "comment": "..."
+        "comment": "...",
+        "lang": "..." (sometimes present)
     }
     
     Our format:
@@ -96,17 +105,28 @@ def convert_refinement_sample(sample: Dict[str, Any]) -> Dict[str, Any]:
     fixed = sample.get("new_code", sample.get("new", ""))
     comment = sample.get("comment", sample.get("msg", ""))
     
-    # Detect language
-    language = detect_language_from_code(original + fixed)
+    # Skip empty samples
+    if not original.strip() or not fixed.strip():
+        return None
     
-    # Categorize the comment
+    # Detect language using all available sources
+    language = get_language_from_sample(sample, original + fixed)
+    
+    # Skip if language not in our targets and not unknown
+    if language not in TARGET_LANGUAGES and language != "unknown":
+        return None
+    
+    # Categorize the comment using shared utility
     category = categorize_comment(comment)
+    
+    # Get file path if available
+    file_path = sample.get("path") or sample.get("file_path") or "unknown"
     
     return {
         "repo": "codereviewer_dataset",
         "pr_number": 0,
         "type": "pr_evolution",
-        "file_path": "unknown",
+        "file_path": file_path,
         "original_code": original,
         "reviewer_comment": comment,
         "fixed_code": fixed,
@@ -115,28 +135,11 @@ def convert_refinement_sample(sample: Dict[str, Any]) -> Dict[str, Any]:
         "quality_score": 50,  # Base score for dataset samples
         "has_vulnerability": False,
         "source": "microsoft_codereviewer",
-        "metadata": {}
+        "metadata": {
+            "original_sample": {k: v for k, v in sample.items() 
+                               if k not in ["old_code", "new_code", "old", "new"]}
+        }
     }
-
-
-def categorize_comment(comment: str) -> str:
-    """Categorize a comment into lesson type."""
-    comment_lower = comment.lower()
-    
-    if any(p in comment_lower for p in ["security", "vulnerability", "injection"]):
-        return "security"
-    if any(p in comment_lower for p in ["error", "handle", "exception"]):
-        return "error_handling"
-    if any(p in comment_lower for p in ["test", "coverage"]):
-        return "testing"
-    if any(p in comment_lower for p in ["performance", "memory", "optimize"]):
-        return "performance"
-    if any(p in comment_lower for p in ["refactor", "extract", "interface"]):
-        return "architecture"
-    if any(p in comment_lower for p in ["style", "naming", "format"]):
-        return "style"
-    
-    return "general"
 
 
 def process_dataset_file(input_path: Path) -> Iterator[Dict[str, Any]]:
@@ -151,8 +154,7 @@ def process_dataset_file(input_path: Path) -> Iterator[Dict[str, Any]]:
                 sample = json.loads(line)
                 converted = convert_refinement_sample(sample)
                 
-                # Filter by language if needed
-                if converted["language"] in TARGET_LANGUAGES or converted["language"] == "unknown":
+                if converted is not None:
                     yield converted
             except json.JSONDecodeError:
                 continue
@@ -181,14 +183,23 @@ def download_and_convert(output_dir: Path, download_dir: Path = None) -> int:
         zip_path = download_dir / f"{dataset_name}.zip"
         if not zip_path.exists():
             print(f"⬇️  Downloading {dataset_name}...")
-            download_file(url, zip_path)
+            try:
+                download_file(url, zip_path)
+            except requests.HTTPError as e:
+                print(f"❌ Download failed: {e}")
+                continue
         else:
             print(f"✅ Already downloaded: {zip_path}")
         
         # Extract
         extract_dir = download_dir / dataset_name
         if not extract_dir.exists():
-            extract_zip(zip_path, extract_dir)
+            try:
+                extract_zip(zip_path, extract_dir)
+            except zipfile.BadZipFile:
+                print(f"❌ Corrupt zip file: {zip_path}")
+                zip_path.unlink()  # Delete corrupted file
+                continue
         
         # Find and convert all jsonl files
         output_file = output_dir / f"{dataset_name}_converted.jsonl"

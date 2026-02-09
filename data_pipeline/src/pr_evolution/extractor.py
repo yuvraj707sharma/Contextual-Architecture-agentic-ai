@@ -11,6 +11,7 @@ UPDATED: Addressed code review feedback:
 2. Fixed fixed_code retrieval to extract only relevant hunk, not entire file
 3. Added quality score filtering
 4. Added security audit for training data
+5. Now uses shared utils for language detection and categorization
 """
 
 import json
@@ -36,74 +37,14 @@ from .github_client import (
     PRDiff
 )
 
+# Import from shared utils (single source of truth)
+from ..utils import detect_language_from_code, categorize_comment
 
+
+# Alias for backward compatibility
 def detect_language(file_path: str) -> str:
-    """Detect language from file extension."""
-    ext_map = {
-        ".go": "go",
-        ".py": "python",
-        ".ts": "typescript",
-        ".tsx": "typescript",
-        ".js": "javascript", 
-        ".jsx": "javascript",
-        ".rs": "rust",
-    }
-    for ext, lang in ext_map.items():
-        if file_path.endswith(ext):
-            return lang
-    return "unknown"
-
-
-def categorize_comment(comment: str) -> str:
-    """
-    Categorize a review comment into a lesson type.
-    
-    This is the "secret sauce" - understanding WHAT TYPE of
-    correction is being made.
-    """
-    comment_lower = comment.lower()
-    
-    # Priority order matters - check most specific first
-    if any(p in comment_lower for p in [
-        "security", "vulnerability", "injection", "xss", "csrf",
-        "sanitize", "validate", "escape"
-    ]):
-        return "security"
-    
-    if any(p in comment_lower for p in [
-        "error", "handle", "panic", "recover", "wrap the error",
-        "check the error", "return the error"
-    ]):
-        return "error_handling"
-    
-    if any(p in comment_lower for p in [
-        "test coverage", "add a test", "unit test", "mock", "assert"
-    ]):
-        return "testing"
-    
-    if any(p in comment_lower for p in [
-        "performance", "memory", "allocate", "goroutine", "async",
-        "mutex", "race condition", "buffer"
-    ]):
-        return "performance"
-    
-    if any(p in comment_lower for p in [
-        "interface", "abstract", "dependency injection", "coupling",
-        "single responsibility", "layer", "extract this"
-    ]):
-        return "architecture"
-    
-    if any(p in comment_lower for p in [
-        "convention", "style", "naming", "format", "we usually"
-    ]):
-        return "style"
-    
-    if any(p in comment_lower for p in [
-        "internal/", "pkg/", "move this to", "belongs in", "package"
-    ]):
-        return "project_structure"
-    
-    return "general"
+    """Detect language from file path. Uses shared utils."""
+    return detect_language_from_code("", file_path)
 
 
 def extract_code_from_diff_hunk(diff_hunk: str) -> Tuple[str, str, str]:
