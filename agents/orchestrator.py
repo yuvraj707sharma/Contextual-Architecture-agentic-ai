@@ -12,7 +12,6 @@ This is the "conductor" that:
 import asyncio
 from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional
-from pathlib import Path
 
 from .base import AgentContext, AgentResponse, AgentRole
 from .historian import HistorianAgent
@@ -268,9 +267,13 @@ async def demo():
     
     orchestrator = Orchestrator()
     
+    # Use parent directory of agents folder as project root
+    import os
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    
     result = await orchestrator.run(
         user_request="Add authentication middleware that validates JWT tokens",
-        repo_path="E:/FUn/contextual-architect",
+        repo_path=project_root,
         language="python"
     )
     

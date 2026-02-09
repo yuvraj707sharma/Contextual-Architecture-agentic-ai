@@ -13,7 +13,7 @@ Key Insight:
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Any, Optional, Set
+from typing import Dict, List, Any
 from collections import Counter
 
 
@@ -320,7 +320,8 @@ class StyleAnalyzer:
                 content = file_path.read_text(encoding='utf-8', errors='ignore')
                 lines = content.split('\n')
                 if lines:
-                    file_max = max(len(line) for line in lines if len(line) < 200)
+                    filtered = [len(line) for line in lines if len(line) < 200]
+                    file_max = max(filtered) if filtered else 100
                     max_lengths.append(file_max)
             except Exception:
                 continue

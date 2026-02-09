@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from typing import Dict, Any, Optional, List
 
 from .base import BaseAgent, AgentContext, AgentResponse, AgentRole
-from .llm_client import BaseLLMClient, LLMResponse
+from .llm_client import BaseLLMClient
 from .style_fingerprint import StyleFingerprint
 
 

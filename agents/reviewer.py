@@ -11,13 +11,10 @@ The Reviewer simulates what would happen in CI/CD:
 This prevents broken code from wasting the user's time.
 """
 
-import os
 import re
-import subprocess
-import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional
 from enum import Enum
 
 from .base import BaseAgent, AgentContext, AgentResponse, AgentRole
