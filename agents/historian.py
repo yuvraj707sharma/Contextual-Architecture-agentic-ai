@@ -300,7 +300,14 @@ Return a JSON object with:
         return []
     
     async def _analyze_local_patterns(self, context: AgentContext) -> List[PatternMatch]:
-        """Analyze local files for patterns using heuristics."""
+        """
+        Analyze local files for patterns using heuristics.
+        
+        FIXED: Now actually scans files from disk and runs regex patterns.
+        """
+        import os
+        from pathlib import Path
+        
         patterns = []
         language = context.language
         
@@ -308,48 +315,253 @@ Return a JSON object with:
             return patterns
         
         rules = self._pattern_rules[language]
+        repo_path = Path(context.repo_path)
         
-        # In a real implementation, this would read files via MCP
-        # For now, return example patterns based on language
-        for rule in rules[:2]:  # Return top 2 patterns
-            patterns.append(PatternMatch(
-                source="heuristic_detection",
-                pattern_type=rule["pattern_type"],
-                description=rule["description"],
-                example_code=f"# Pattern detected via regex: {rule['regex'][:50]}...",
-                confidence=rule["confidence"],
-            ))
+        if not repo_path.exists():
+            return patterns
+        
+        # Get file extensions for this language
+        ext_map = {
+            "go": [".go"],
+            "python": [".py"],
+            "typescript": [".ts", ".tsx"],
+            "javascript": [".js", ".jsx"],
+        }
+        extensions = ext_map.get(language, [])
+        
+        # Find files to scan (limit to avoid scanning huge repos)
+        files_to_scan = []
+        for ext in extensions:
+            found = list(repo_path.rglob(f"*{ext}"))
+            files_to_scan.extend(found[:20])  # Max 20 files per extension
+        
+        # Scan each file for patterns
+        for file_path in files_to_scan[:50]:  # Max 50 files total
+            try:
+                file_patterns = self._scan_file_for_patterns(file_path, rules)
+                patterns.extend(file_patterns)
+            except Exception:
+                continue  # Skip files we can't read
+        
+        # Deduplicate patterns by type (keep highest confidence)
+        seen_types = {}
+        for p in patterns:
+            if p.pattern_type not in seen_types or p.confidence > seen_types[p.pattern_type].confidence:
+                seen_types[p.pattern_type] = p
+        
+        return list(seen_types.values())
+    
+    def _scan_file_for_patterns(
+        self, 
+        file_path: "Path", 
+        rules: List[Dict[str, Any]]
+    ) -> List[PatternMatch]:
+        """
+        Scan a single file for pattern matches.
+        
+        Returns PatternMatch objects with real code snippets.
+        """
+        patterns = []
+        
+        try:
+            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                content = f.read()
+        except Exception:
+            return patterns
+        
+        for rule in rules:
+            try:
+                # Find all matches of this pattern
+                matches = list(re.finditer(rule["regex"], content))
+                
+                if matches:
+                    # Get the first match as example
+                    match = matches[0]
+                    
+                    # Extract surrounding context (the line + 1 line before/after)
+                    start = max(0, content.rfind('\n', 0, match.start()) + 1)
+                    end = content.find('\n', match.end())
+                    if end == -1:
+                        end = len(content)
+                    
+                    # Get a few more lines for context
+                    line_start = content.rfind('\n', 0, start)
+                    if line_start == -1:
+                        line_start = 0
+                    line_end = content.find('\n', end + 1)
+                    if line_end == -1:
+                        line_end = end
+                    
+                    code_snippet = content[line_start:line_end].strip()
+                    
+                    # Limit snippet length
+                    if len(code_snippet) > 300:
+                        code_snippet = code_snippet[:300] + "..."
+                    
+                    patterns.append(PatternMatch(
+                        source=str(file_path.name),
+                        pattern_type=rule["pattern_type"],
+                        description=f"{rule['description']} (found {len(matches)} occurrences)",
+                        example_code=code_snippet,
+                        confidence=rule["confidence"],
+                    ))
+            except re.error:
+                continue  # Skip invalid regex
         
         return patterns
     
     async def _detect_conventions(self, context: AgentContext) -> Dict[str, str]:
-        """Detect project conventions from structure."""
-        conventions = {}
+        """
+        Detect project conventions from actual project structure and files.
         
-        # Language-specific default conventions
-        if context.language == "go":
-            conventions = {
-                "project_layout": "Standard Go project layout (/cmd, /internal, /pkg)",
-                "error_handling": "Return errors, don't panic. Wrap with context.",
-                "imports": "Group: stdlib, third-party, internal",
-                "naming": "CamelCase for exported, camelCase for internal",
-            }
-        elif context.language == "python":
-            conventions = {
-                "project_layout": "src/ layout with pyproject.toml",
-                "error_handling": "Raise specific exceptions, use context managers",
-                "imports": "isort order: stdlib, third-party, local",
-                "naming": "snake_case for functions/variables, PascalCase for classes",
-            }
-        elif context.language in ("typescript", "javascript"):
-            conventions = {
-                "project_layout": "src/ with index.ts barrel exports",
-                "error_handling": "Use Result types or throw typed errors",
-                "imports": "Absolute imports from src/",
-                "naming": "camelCase for functions/variables, PascalCase for types",
-            }
+        FIXED: Now scans the project to find real conventions instead of hardcoding.
+        """
+        from pathlib import Path
+        
+        conventions = {}
+        repo_path = Path(context.repo_path)
+        
+        if not repo_path.exists():
+            return self._get_default_conventions(context.language)
+        
+        # Detect project layout
+        conventions["project_layout"] = self._detect_layout(repo_path)
+        
+        # Detect logging library
+        conventions["logging"] = self._detect_logging_lib(repo_path, context.language)
+        
+        # Detect testing framework
+        conventions["testing"] = self._detect_testing_framework(repo_path, context.language)
+        
+        # Detect import style (sample from files)
+        conventions["imports"] = self._detect_import_style(repo_path, context.language)
         
         return conventions
+    
+    def _get_default_conventions(self, language: str) -> Dict[str, str]:
+        """Fallback to default conventions if repo can't be analyzed."""
+        defaults = {
+            "go": {"project_layout": "unknown", "logging": "standard log", "testing": "testing package"},
+            "python": {"project_layout": "unknown", "logging": "logging module", "testing": "unittest"},
+            "typescript": {"project_layout": "unknown", "logging": "console", "testing": "unknown"},
+        }
+        return defaults.get(language, {"project_layout": "unknown"})
+    
+    def _detect_layout(self, repo_path: "Path") -> str:
+        """Detect project layout from directory structure."""
+        dirs = [d.name for d in repo_path.iterdir() if d.is_dir() and not d.name.startswith('.')]
+        
+        # Go patterns
+        if "cmd" in dirs and ("internal" in dirs or "pkg" in dirs):
+            return "Standard Go layout (/cmd, /internal, /pkg)"
+        if "internal" in dirs:
+            return "Go layout with /internal"
+        
+        # Python patterns
+        if "src" in dirs:
+            if (repo_path / "pyproject.toml").exists():
+                return "src layout with pyproject.toml"
+            return "src layout"
+        if (repo_path / "setup.py").exists():
+            return "setuptools layout"
+        
+        # JS/TS patterns
+        if (repo_path / "package.json").exists():
+            if "src" in dirs:
+                return "src/ with package.json"
+            return "package.json root"
+        
+        return f"Custom layout ({', '.join(dirs[:5])})"
+    
+    def _detect_logging_lib(self, repo_path: "Path", language: str) -> str:
+        """Detect which logging library the project uses."""
+        import re
+        
+        patterns = {
+            "go": [
+                (r'zerolog', "zerolog (structured)"),
+                (r'zap\.', "zap (Uber)"),
+                (r'logrus', "logrus"),
+                (r'log\.(Print|Fatal|Panic)', "standard log"),
+            ],
+            "python": [
+                (r'structlog', "structlog"),
+                (r'loguru', "loguru"),
+                (r'logging\.getLogger', "standard logging"),
+            ],
+            "typescript": [
+                (r'winston', "winston"),
+                (r'pino', "pino"),
+                (r'console\.(log|error|warn)', "console"),
+            ],
+        }
+        
+        lang_patterns = patterns.get(language, [])
+        
+        # Sample a few files
+        ext_map = {"go": ".go", "python": ".py", "typescript": ".ts"}
+        ext = ext_map.get(language, "")
+        
+        for file in list(repo_path.rglob(f"*{ext}"))[:10]:
+            try:
+                content = file.read_text(encoding='utf-8', errors='ignore')
+                for pattern, name in lang_patterns:
+                    if re.search(pattern, content):
+                        return name
+            except:
+                continue
+        
+        return "unknown"
+    
+    def _detect_testing_framework(self, repo_path: "Path", language: str) -> str:
+        """Detect which testing framework the project uses."""
+        # Check for config files first
+        if (repo_path / "pytest.ini").exists() or (repo_path / "pyproject.toml").exists():
+            try:
+                content = (repo_path / "pyproject.toml").read_text(errors='ignore')
+                if "pytest" in content:
+                    return "pytest"
+            except:
+                pass
+        
+        if (repo_path / "jest.config.js").exists() or (repo_path / "jest.config.ts").exists():
+            return "jest"
+        
+        if (repo_path / "vitest.config.ts").exists():
+            return "vitest"
+        
+        # Check test files
+        test_files = list(repo_path.rglob("*_test.go")) + list(repo_path.rglob("test_*.py"))
+        if test_files:
+            return "testing package (Go)" if test_files[0].suffix == ".go" else "pytest-style"
+        
+        return "unknown"
+    
+    def _detect_import_style(self, repo_path: "Path", language: str) -> str:
+        """Detect import style from sample files."""
+        if language == "python":
+            # Check for isort or black config
+            if (repo_path / ".isort.cfg").exists():
+                return "isort configured"
+            if (repo_path / "pyproject.toml").exists():
+                try:
+                    content = (repo_path / "pyproject.toml").read_text(errors='ignore')
+                    if "[tool.isort]" in content:
+                        return "isort via pyproject.toml"
+                except:
+                    pass
+        
+        if language == "typescript":
+            # Check for path aliases in tsconfig
+            if (repo_path / "tsconfig.json").exists():
+                try:
+                    content = (repo_path / "tsconfig.json").read_text(errors='ignore')
+                    if '"paths"' in content or '"baseUrl"' in content:
+                        return "absolute imports via tsconfig paths"
+                except:
+                    pass
+        
+        return "standard"
     
     async def _enhance_with_llm(
         self, 
