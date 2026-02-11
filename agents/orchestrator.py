@@ -10,6 +10,7 @@ This is the "conductor" that:
 """
 
 import asyncio
+import time
 from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional
 
@@ -21,6 +22,8 @@ from .reviewer import ReviewerAgent, ValidationResult
 from .safe_writer import SafeCodeWriter, ChangeSet
 from .style_fingerprint import StyleAnalyzer
 from .llm_client import BaseLLMClient
+from .config import AgentConfig
+from .logger import get_logger, timed_operation, PipelineMetrics
 
 
 @dataclass
@@ -53,6 +56,9 @@ class OrchestrationResult:
     
     # Number of generation attempts
     attempts: int = 1
+    
+    # Performance metrics
+    metrics: Optional[PipelineMetrics] = None
 
 
 class Orchestrator:
@@ -73,20 +79,22 @@ class Orchestrator:
     def __init__(
         self, 
         llm_client: Optional[BaseLLMClient] = None, 
-        max_retries: int = 3,
-        auto_approve_new_files: bool = True,
+        config: Optional[AgentConfig] = None,
     ):
         """
         Initialize the orchestrator.
         
         Args:
-            llm_client: LLM client for Implementer
-            max_retries: Max rejection loop iterations
-            auto_approve_new_files: Auto-approve creation of new files
+            llm_client: LLM client for Implementer (overrides config provider)
+            config: Pipeline configuration (defaults to AgentConfig())
         """
+        self.config = config or AgentConfig()
         self.llm_client = llm_client
-        self.max_retries = max_retries
-        self.auto_approve_new_files = auto_approve_new_files
+        self.logger = get_logger(
+            "orchestrator",
+            level=self.config.log_level,
+            fmt=self.config.log_format,
+        )
         
         # Initialize agents
         self.historian = HistorianAgent()
@@ -112,6 +120,8 @@ class Orchestrator:
             OrchestrationResult with generated code and changeset
         """
         result = OrchestrationResult(success=False)
+        metrics = PipelineMetrics()
+        pipeline_start = time.perf_counter()
         
         # Build initial context
         context = AgentContext(
@@ -120,94 +130,117 @@ class Orchestrator:
             language=language,
         )
         
-        print(f"🚀 Starting orchestration for: {user_request[:50]}...")
-        print(f"   Repo: {repo_path}")
-        print(f"   Language: {language}")
+        self.logger.info(
+            "Starting orchestration",
+            extra={"agent": "orchestrator", "step": "start"},
+        )
+        self.logger.debug(f"Request: {user_request[:80]}")
+        self.logger.debug(f"Repo: {repo_path} | Language: {language}")
         
         # Step 1: Analyze project style
-        print("\n🎨 Analyzing project style...")
-        style_analyzer = StyleAnalyzer(repo_path, language)
-        style_fingerprint = style_analyzer.analyze()
-        context.prior_context["style_fingerprint"] = style_fingerprint
-        print(f"   ✓ Style: {style_fingerprint.function_naming} functions, "
-              f"{style_fingerprint.logger_library} logging")
+        with timed_operation(self.logger, "style_analyzer"):
+            style_analyzer = StyleAnalyzer(repo_path, language)
+            style_fingerprint = style_analyzer.analyze()
+            context.prior_context["style_fingerprint"] = style_fingerprint
+        
+        self.logger.debug(
+            f"Style: {style_fingerprint.function_naming} functions, "
+            f"{style_fingerprint.logger_library} logging"
+        )
         
         # Step 2: Run Historian
-        print("\n📜 Running Historian Agent...")
-        historian_response = await self.historian.process(context)
+        with timed_operation(self.logger, "historian"):
+            historian_response = await self.historian.process(context)
         
         if not historian_response.success:
             result.errors.append(f"Historian failed: {historian_response.summary}")
+            self.logger.error("Historian failed", extra={"agent": "historian"})
             return result
         
         result.agent_summaries["historian"] = historian_response.summary
         context.prior_context["historian"] = historian_response.data
-        print(f"   ✓ {historian_response.summary}")
         
         # Step 3: Run Architect
-        print("\n🏗️  Running Architect Agent...")
-        architect_response = await self.architect.process(context)
+        with timed_operation(self.logger, "architect"):
+            architect_response = await self.architect.process(context)
         
         if not architect_response.success:
             result.errors.append(f"Architect failed: {architect_response.summary}")
+            self.logger.error("Architect failed", extra={"agent": "architect"})
             return result
         
         result.agent_summaries["architect"] = architect_response.summary
         context.prior_context["architect"] = architect_response.data
         result.target_file = architect_response.data.get("target_file", "")
-        print(f"   ✓ {architect_response.summary}")
         
         # Step 4: Generate and validate code (with retry loop)
-        print("\n💻 Generating code with Implementer...")
+        max_retries = self.config.max_retries
         
-        for attempt in range(1, self.max_retries + 1):
+        for attempt in range(1, max_retries + 1):
             result.attempts = attempt
             
             # Generate code
-            impl_response = await self.implementer.process(context)
+            with timed_operation(self.logger, f"implementer_attempt_{attempt}"):
+                impl_response = await self.implementer.process(context)
             
             if not impl_response.success:
                 result.errors.append(f"Implementer failed: {impl_response.summary}")
+                self.logger.warning(
+                    f"Implementer failed on attempt {attempt}",
+                    extra={"agent": "implementer"},
+                )
                 continue
             
             generated_code = impl_response.data.get("code", "")
             target_file = impl_response.data.get("file_path", result.target_file)
             
-            print(f"   ✓ Generated {len(generated_code)} chars (attempt {attempt})")
+            self.logger.info(
+                f"Generated {len(generated_code)} chars (attempt {attempt})",
+                extra={"agent": "implementer"},
+            )
             
             # Validate with Reviewer
-            print("\n🔍 Validating with Reviewer...")
-            validation = await self.reviewer.validate(
-                code=generated_code,
-                file_path=target_file,
-                language=language,
-                repo_path=repo_path,
-            )
+            with timed_operation(self.logger, f"reviewer_attempt_{attempt}"):
+                validation = await self.reviewer.validate(
+                    code=generated_code,
+                    file_path=target_file,
+                    language=language,
+                    repo_path=repo_path,
+                )
             
             result.validation = validation
             result.agent_summaries["reviewer"] = validation.summary
             
             if validation.passed:
-                print(f"   ✓ {validation.summary}")
+                self.logger.info(
+                    f"Validation passed: {validation.summary}",
+                    extra={"agent": "reviewer"},
+                )
                 result.generated_code = generated_code
                 result.target_file = target_file
                 break
             else:
-                print(f"   ⚠️ {validation.summary}")
-                # Feed errors back for next attempt
+                metrics.retries += 1
+                self.logger.warning(
+                    f"Validation failed: {validation.summary}",
+                    extra={"agent": "reviewer"},
+                )
                 context.prior_context["validation_errors"] = validation.to_prompt_feedback()
                 
-                if attempt < self.max_retries:
-                    print(f"   🔄 Retrying ({attempt}/{self.max_retries})...")
+                if attempt < max_retries:
+                    self.logger.info(
+                        f"Retrying ({attempt}/{max_retries})",
+                        extra={"step": "retry"},
+                    )
         
         # Step 5: Plan safe changes
         if result.generated_code:
-            print("\n📦 Planning safe file changes...")
-            safe_writer = SafeCodeWriter(repo_path)
-            changeset = safe_writer.plan_changes(
-                generated_files={result.target_file: result.generated_code},
-                language=language,
-            )
+            with timed_operation(self.logger, "safe_writer"):
+                safe_writer = SafeCodeWriter(repo_path)
+                changeset = safe_writer.plan_changes(
+                    generated_files={result.target_file: result.generated_code},
+                    language=language,
+                )
             result.changeset = changeset
             result.context = {
                 "historian": context.prior_context.get("historian", {}),
@@ -216,12 +249,21 @@ class Orchestrator:
             }
             result.success = True
             
-            print(f"   ✓ {len(changeset.changes)} changes planned")
-            print(f"   ✓ {len(changeset.untouched_files)} files preserved")
+            self.logger.info(
+                f"{len(changeset.changes)} changes planned, "
+                f"{len(changeset.untouched_files)} files preserved",
+                extra={"agent": "safe_writer"},
+            )
         
-        print(f"\n{'✅' if result.success else '❌'} Orchestration complete!")
-        if result.target_file:
-            print(f"   Target file: {result.target_file}")
+        # Finalize metrics
+        metrics.total_duration_ms = (time.perf_counter() - pipeline_start) * 1000
+        result.metrics = metrics
+        
+        self.logger.info(
+            f"Orchestration {'succeeded' if result.success else 'failed'} "
+            f"in {metrics.total_duration_ms:.0f}ms",
+            extra={"step": "complete"},
+        )
         
         return result
     
@@ -241,7 +283,13 @@ class Orchestrator:
             Report of applied/skipped changes
         """
         safe_writer = SafeCodeWriter(repo_path)
-        return safe_writer.apply_changes(changeset)
+        report = safe_writer.apply_changes(changeset)
+        self.logger.info(
+            f"Applied {report['total_applied']} changes, "
+            f"skipped {report['total_skipped']}",
+            extra={"step": "apply"},
+        )
+        return report
     
     def show_changes(self, result: OrchestrationResult) -> str:
         """
@@ -261,45 +309,39 @@ class Orchestrator:
 
 async def demo():
     """Demo the orchestrator on the current project."""
-    print("=" * 60)
-    print("CONTEXTUAL ARCHITECT - DEMO")
-    print("=" * 60)
-    
-    orchestrator = Orchestrator()
-    
-    # Use parent directory of agents folder as project root
     import os
+
+    config = AgentConfig(log_level="DEBUG", log_format="pretty")
+    orchestrator = Orchestrator(config=config)
+
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    
+
     result = await orchestrator.run(
         user_request="Add authentication middleware that validates JWT tokens",
         repo_path=project_root,
         language="python"
     )
-    
-    print("\n" + "=" * 60)
-    print("ORCHESTRATION RESULT")
-    print("=" * 60)
-    print(f"Success: {result.success}")
-    print(f"Target: {result.target_file}")
-    print(f"Attempts: {result.attempts}")
-    
+
+    logger = get_logger("demo")
+    logger.info("=" * 60)
+    logger.info("ORCHESTRATION RESULT")
+    logger.info(f"Success: {result.success}")
+    logger.info(f"Target: {result.target_file}")
+    logger.info(f"Attempts: {result.attempts}")
+
     if result.validation:
-        print(f"\nValidation: {result.validation.summary}")
-    
+        logger.info(f"Validation: {result.validation.summary}")
+
+    if result.metrics:
+        logger.info(f"Metrics:\n{result.metrics.summary()}")
+
     if result.changeset:
-        print("\n" + "=" * 60)
-        print("PROPOSED CHANGES")
-        print("=" * 60)
-        print(orchestrator.show_changes(result))
-    
+        logger.info("PROPOSED CHANGES")
+        logger.info(orchestrator.show_changes(result))
+
     if result.generated_code:
-        print("\n" + "=" * 60)
-        print("GENERATED CODE PREVIEW (first 500 chars)")
-        print("=" * 60)
-        print(result.generated_code[:500])
-        if len(result.generated_code) > 500:
-            print(f"... ({len(result.generated_code) - 500} more chars)")
+        logger.info("GENERATED CODE PREVIEW (first 500 chars)")
+        logger.info(result.generated_code[:500])
 
 
 if __name__ == "__main__":

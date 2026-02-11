@@ -11,6 +11,8 @@ This package contains the agent swarm architecture:
 - SafeCodeWriter: Permission-based file writing
 - StyleAnalyzer: Extracts project-specific code style
 - LLM Clients: DeepSeek, Ollama, OpenAI, Anthropic adapters
+- AgentConfig: Centralized configuration
+- Logger: Structured logging and timing
 """
 
 from .base import BaseAgent, AgentContext, AgentResponse, AgentRole
@@ -33,6 +35,10 @@ from .llm_client import (
     AnthropicClient,
     create_llm_client,
 )
+
+# Config and observability
+from .config import AgentConfig
+from .logger import get_logger, timed_operation, PipelineMetrics
 
 __all__ = [
     # Agents
@@ -61,4 +67,10 @@ __all__ = [
     "OpenAIClient",
     "AnthropicClient",
     "create_llm_client",
+    # Config & Logging
+    "AgentConfig",
+    "get_logger",
+    "timed_operation",
+    "PipelineMetrics",
 ]
+

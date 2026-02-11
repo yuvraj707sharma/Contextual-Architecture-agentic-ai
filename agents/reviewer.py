@@ -11,13 +11,18 @@ The Reviewer simulates what would happen in CI/CD:
 This prevents broken code from wasting the user's time.
 """
 
+import os
 import re
+import shutil
+import subprocess
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from enum import Enum
 
 from .base import BaseAgent, AgentContext, AgentResponse, AgentRole
+from .logger import get_logger
 
 
 class CheckType(Enum):
@@ -178,8 +183,11 @@ Only fail for real issues, not style preferences.
         },
     }
     
-    def __init__(self, llm_client=None):
+    def __init__(self, llm_client=None, use_external_tools: bool = True, tool_timeout: int = 30):
         super().__init__(llm_client)
+        self.use_external_tools = use_external_tools
+        self.tool_timeout = tool_timeout
+        self.logger = get_logger("reviewer")
     
     @property
     def role(self) -> AgentRole:
@@ -246,6 +254,13 @@ Only fail for real issues, not style preferences.
         lint_issues = self._basic_lint(code, file_path, language)
         result.issues.extend(lint_issues)
         result.checks_run.append("lint")
+        
+        # 5. External tools (if available and enabled)
+        if self.use_external_tools:
+            external_issues = self._run_external_tools(code, file_path, language)
+            result.issues.extend(external_issues)
+            if external_issues:
+                result.checks_run.append("external_tools")
         
         # Determine overall pass/fail
         error_count = len(result.errors)
@@ -508,6 +523,133 @@ Only fail for real issues, not style preferences.
                     message="Mutable default argument (use None instead)",
                     file_path=file_path,
                 ))
+        
+        return issues
+    
+    def _run_external_tools(
+        self,
+        code: str,
+        file_path: str,
+        language: str,
+    ) -> List[ValidationIssue]:
+        """Run external linting/checking tools if available."""
+        tools = self.VALIDATION_TOOLS.get(language, {})
+        if not tools:
+            return []
+        
+        all_issues: List[ValidationIssue] = []
+        
+        for check_name, cmd in tools.items():
+            issues = self._run_single_tool(cmd, code, file_path, check_name, language)
+            all_issues.extend(issues)
+        
+        return all_issues
+    
+    def _run_single_tool(
+        self,
+        cmd: List[str],
+        code: str,
+        file_path: str,
+        check_name: str,
+        language: str,
+    ) -> List[ValidationIssue]:
+        """Run a single external tool and parse its output."""
+        issues: List[ValidationIssue] = []
+        tool_name = cmd[0]
+        
+        # Check if tool is installed
+        if not shutil.which(tool_name):
+            self.logger.debug(f"Tool '{tool_name}' not found, skipping {check_name}")
+            return []
+        
+        # Map language to file extension
+        ext_map = {
+            "python": ".py",
+            "go": ".go",
+            "typescript": ".ts",
+            "javascript": ".js",
+        }
+        ext = ext_map.get(language, ".txt")
+        
+        # Write code to temp file
+        tmp_fd, tmp_path = tempfile.mkstemp(suffix=ext)
+        try:
+            with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
+                f.write(code)
+            
+            full_cmd = cmd + [tmp_path]
+            self.logger.debug(f"Running: {' '.join(full_cmd)}")
+            
+            proc = subprocess.run(
+                full_cmd,
+                capture_output=True,
+                text=True,
+                timeout=self.tool_timeout,
+            )
+            
+            # Parse output into issues
+            output = proc.stdout + proc.stderr
+            if proc.returncode != 0 and output.strip():
+                issues.extend(
+                    self._parse_tool_output(output, file_path, check_name)
+                )
+                
+        except subprocess.TimeoutExpired:
+            self.logger.warning(f"{tool_name} timed out after {self.tool_timeout}s")
+        except Exception as e:
+            self.logger.warning(f"{tool_name} failed: {e}")
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+        
+        return issues
+    
+    def _parse_tool_output(
+        self,
+        output: str,
+        file_path: str,
+        check_name: str,
+    ) -> List[ValidationIssue]:
+        """Parse output from an external tool into ValidationIssues."""
+        issues: List[ValidationIssue] = []
+        
+        check_type_map = {
+            "syntax": CheckType.SYNTAX,
+            "type": CheckType.TYPE,
+            "lint": CheckType.LINT,
+        }
+        check_type = check_type_map.get(check_name, CheckType.LINT)
+        
+        for line in output.strip().splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            
+            # Try to extract line number (common format: file:line:col: message)
+            line_num = None
+            message = line
+            match = re.match(r'[^:]+:(\d+)(?::\d+)?:\s*(.*)', line)
+            if match:
+                line_num = int(match.group(1))
+                message = match.group(2)
+            
+            # Determine severity from message content
+            if "error" in message.lower():
+                severity = Severity.ERROR
+            elif "warning" in message.lower():
+                severity = Severity.WARNING
+            else:
+                severity = Severity.WARNING
+            
+            issues.append(ValidationIssue(
+                check_type=check_type,
+                severity=severity,
+                message=f"[{check_name}] {message}",
+                file_path=file_path,
+                line_number=line_num,
+            ))
         
         return issues
 
