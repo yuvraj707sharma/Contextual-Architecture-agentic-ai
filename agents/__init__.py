@@ -1,76 +1,81 @@
 """
-Contextual Architect - Multi-Agent Framework
+Contextual Architect — Multi-Agent Code Generation System.
 
-This package contains the agent swarm architecture:
-- BaseAgent: Abstract base class for all agents
-- HistorianAgent: Analyzes PR history and patterns
-- ArchitectAgent: Maps codebase structure
-- ImplementerAgent: Generates code with LLM
-- ReviewerAgent: Security, syntax, and compliance checks
-- Orchestrator: Chains agents together
-- SafeCodeWriter: Permission-based file writing
-- StyleAnalyzer: Extracts project-specific code style
-- LLM Clients: DeepSeek, Ollama, OpenAI, Anthropic adapters
-- AgentConfig: Centralized configuration
-- Logger: Structured logging and timing
+Agents:
+  - HistorianAgent: Mines patterns and conventions from a codebase
+  - ArchitectAgent: Maps project structure and finds utilities
+  - ImplementerAgent: Generates code using LLM with full context
+  - ReviewerAgent: Validates code (syntax, security, lint)
+  - StyleAnalyzer: Fingerprints a project's exact coding style
+
+Infrastructure:
+  - Orchestrator: Chains agents with rejection loop
+  - SafeCodeWriter: Permission-based file writing
+  - AgentConfig: Central configuration
+  - create_llm_client: Multi-provider LLM factory
+
+Usage:
+    # As a library
+    from agents import Orchestrator, AgentConfig
+    config = AgentConfig(llm_provider="deepseek")
+    orch = Orchestrator(config=config)
+    result = await orch.run("Add auth", repo_path="./myproject", language="python")
+
+    # As a CLI
+    python -m agents "Add JWT auth" --repo ./myproject --lang python
 """
 
 from .base import BaseAgent, AgentContext, AgentResponse, AgentRole
 from .historian import HistorianAgent
 from .architect import ArchitectAgent
 from .implementer import ImplementerAgent
-from .reviewer import ReviewerAgent
-from .orchestrator import Orchestrator
-
-# Safety and style
-from .safe_writer import SafeCodeWriter, ChangeSet, ProposedChange, plan_safe_changes
-from .style_fingerprint import StyleFingerprint, StyleAnalyzer, analyze_project_style
-
-# LLM clients
+from .reviewer import ReviewerAgent, ValidationResult, validate_code
+from .style_fingerprint import StyleAnalyzer, StyleFingerprint
+from .orchestrator import Orchestrator, OrchestrationResult
+from .safe_writer import SafeCodeWriter, ChangeSet, ProposedChange
 from .llm_client import (
     BaseLLMClient,
     DeepSeekClient,
     OllamaClient,
     OpenAIClient,
     AnthropicClient,
+    MockLLMClient,
     create_llm_client,
 )
-
-# Config and observability
 from .config import AgentConfig
-from .logger import get_logger, timed_operation, PipelineMetrics
+from .logger import get_logger, PipelineMetrics
 
 __all__ = [
     # Agents
     "BaseAgent",
-    "AgentContext", 
-    "AgentResponse",
-    "AgentRole",
     "HistorianAgent",
     "ArchitectAgent",
     "ImplementerAgent",
     "ReviewerAgent",
+    "StyleAnalyzer",
+    # Orchestration
     "Orchestrator",
-    # Safety
-    "SafeCodeWriter",
+    "OrchestrationResult",
+    # Data models
+    "AgentContext",
+    "AgentResponse",
+    "AgentRole",
+    "ValidationResult",
+    "StyleFingerprint",
     "ChangeSet",
     "ProposedChange",
-    "plan_safe_changes",
-    # Style
-    "StyleFingerprint",
-    "StyleAnalyzer",
-    "analyze_project_style",
     # LLM
     "BaseLLMClient",
     "DeepSeekClient",
     "OllamaClient",
     "OpenAIClient",
     "AnthropicClient",
+    "MockLLMClient",
     "create_llm_client",
-    # Config & Logging
+    # Config
     "AgentConfig",
+    # Utilities
     "get_logger",
-    "timed_operation",
     "PipelineMetrics",
+    "validate_code",
 ]
-

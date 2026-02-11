@@ -1,81 +1,107 @@
-# Agents Module
+# Contextual Architect — Agent Framework
 
-Multi-agent framework for the Contextual Architect.
+Multi-agent pipeline that writes production-grade, enterprise-ready code.
 
 ## Architecture
 
 ```
-agents/
-├── __init__.py          # Package exports
-├── base.py              # BaseAgent abstract class
-├── historian.py         # HistorianAgent ✅
-├── architect.py         # ArchitectAgent (TODO)
-├── implementer.py       # ImplementerAgent (TODO)
-└── reviewer.py          # ReviewerAgent (TODO)
+User Request
+     │
+     ▼
+┌─────────────────────────────────────────────────────┐
+│           PARALLEL DISCOVERY PHASE                  │
+│  ┌──────────────┬──────────────┬──────────────────┐ │
+│  │ StyleAnalyzer│  Historian   │    Architect      │ │
+│  │ (fingerprint)│ (patterns)   │ (structure)       │ │
+│  └──────┬───────┴──────┬───────┴────────┬─────────┘ │
+│         └──────────────┼────────────────┘           │
+│                        ▼                            │
+│               ┌──────────────┐                      │
+│               │ Implementer  │ ← LLM generates code│
+│               └──────┬───────┘                      │
+│                      ▼                              │
+│               ┌──────────────┐                      │
+│               │   Reviewer   │ ← syntax, security,  │
+│               └──────┬───────┘   lint, tests        │
+│                      │                              │
+│              ┌───────┴────────┐                     │
+│              │  Pass?         │                     │
+│              │  YES → SafeWriter (ask permission)   │
+│              │  NO  → feed errors → Implementer     │
+│              └────────────────┘                     │
+└─────────────────────────────────────────────────────┘
 ```
 
-## Agent Roles
+## Quick Start
 
-| Agent | Purpose | Status |
-|-------|---------|--------|
-| **Historian** | Analyzes PR history, finds patterns | ✅ Built |
-| **Architect** | Maps codebase structure, finds utilities | 🔲 TODO |
-| **Implementer** | Generates production-grade code | 🔲 TODO |
-| **Reviewer** | Security & compliance validation | 🔲 TODO |
+### As CLI Tool
+```bash
+# Install
+pip install -e .
 
-## Usage
+# Set API key (pick one)
+export DEEPSEEK_API_KEY=sk-...          # cheapest ($0.14/1M tokens)
+export OPENAI_API_KEY=sk-...            # GPT-4o
+export ANTHROPIC_API_KEY=sk-ant-...     # Claude (best quality)
 
+# Run
+python -m agents "Add JWT authentication middleware" --repo ./myproject --lang python
+
+# Or with the installed command
+contextual-architect "Add caching layer" --repo ./myproject --lang go
+
+# Dry run (see output without writing files)
+python -m agents "Add health check" --repo ./myproject --dry-run
+
+# Use a specific provider
+python -m agents "Add logging" --repo ./myproject --provider ollama
+```
+
+### As Library
 ```python
-from agents import HistorianAgent, AgentContext
+import asyncio
+from agents import Orchestrator, AgentConfig
 
-# Create agent (can work without LLM for testing)
-historian = HistorianAgent()
+config = AgentConfig(llm_provider="deepseek")
+orch = Orchestrator(config=config)
 
-# Create context
-context = AgentContext(
+result = asyncio.run(orch.run(
     user_request="Add JWT authentication middleware",
     repo_path="/path/to/project",
-    language="go",
-)
+    language="python",
+))
 
-# Run agent
-response = await historian.process(context)
-
-# Use output
-print(response.summary)
-print(response.data["patterns"])
-print(response.data["conventions"])
+print(result.generated_code)
+print(result.target_file)
+print(result.validation.summary)
 ```
 
-## Agent Communication
+## Agents
 
-Agents communicate via `AgentContext` and `AgentResponse`:
+| Agent | Role |
+|-------|------|
+| **StyleAnalyzer** | Fingerprints exact coding style (naming, indentation, logging, error handling) |
+| **Historian** | Scans repo for patterns, conventions, and common mistakes |
+| **Architect** | Maps directory structure, finds reusable utilities, picks target file |
+| **Implementer** | Generates code using LLM with ALL context from other agents |
+| **Reviewer** | Validates syntax, security, imports, lint — rejects bad code |
+| **SafeWriter** | Permission-based file writing — never modifies without asking |
 
+## LLM Providers
+
+| Provider | Cost | Quality | Setup |
+|----------|------|---------|-------|
+| DeepSeek | $0.14/1M tokens | Great for code | `DEEPSEEK_API_KEY` |
+| Ollama | FREE (local) | Good | `ollama pull deepseek-coder-v2:16b` |
+| OpenAI | $2.50-5/1M tokens | Excellent | `OPENAI_API_KEY` |
+| Anthropic | $3-15/1M tokens | Best reasoning | `ANTHROPIC_API_KEY` |
+| Mock | Free | Placeholder only | Default (no key needed) |
+
+## Tests
+
+```bash
+pip install -e ".[dev]"
+python -m pytest agents/tests/ -v
 ```
-User Request
-    ↓
-┌─────────────┐
-│  Historian  │ → Finds patterns, conventions
-└─────────────┘
-    ↓ context
-┌─────────────┐  
-│  Architect  │ → Maps structure, finds utilities
-└─────────────┘
-    ↓ context
-┌─────────────┐
-│ Implementer │ → Generates code with context
-└─────────────┘
-    ↓ code
-┌─────────────┐
-│  Reviewer   │ → Validates security & compliance
-└─────────────┘
-    ↓
-Final Code (or rejection → back to Implementer)
-```
 
-## LLM Modes
-
-Each agent can run in two modes:
-
-1. **With LLM**: Full reasoning capabilities
-2. **Without LLM**: Heuristic fallback (for testing)
+181 tests across 8 test files covering all agents, orchestrator, config, and logging.
