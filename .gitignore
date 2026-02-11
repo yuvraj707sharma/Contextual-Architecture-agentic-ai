@@ -12,6 +12,13 @@ env/
 dist/
 build/
 
+# Testing
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.tox/
+
 # IDE
 .vscode/
 .idea/
