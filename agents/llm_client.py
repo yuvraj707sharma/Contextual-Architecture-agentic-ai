@@ -6,6 +6,7 @@ Supports:
 - Ollama (free, local)
 - OpenAI (GPT-4o)
 - Anthropic (Claude)
+- Google Gemini (free tier available)
 
 The system can swap LLMs freely - the agents don't care which one is used.
 """
@@ -309,6 +310,69 @@ class AnthropicClient(BaseLLMClient):
         )
 
 
+class GeminiClient(BaseLLMClient):
+    """
+    Google Gemini API Client (native SDK).
+    
+    - Models: gemini-2.5-flash, gemini-2.5-pro, gemini-2.0-flash
+    - Cost: FREE tier (15 RPM), paid tier available
+    - Quality: Excellent for code generation
+    
+    Get API key: https://aistudio.google.com/apikey
+    """
+    
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        model: str = "gemini-2.5-flash",
+    ):
+        self.api_key = api_key or os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+        if not self.api_key:
+            raise ValueError("GOOGLE_API_KEY or GEMINI_API_KEY not found")
+        
+        self.model = model
+    
+    @property
+    def model_name(self) -> str:
+        return f"google/{self.model}"
+    
+    async def generate(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        temperature: float = 0.1,
+        max_tokens: int = 4096,
+    ) -> LLMResponse:
+        from google import genai
+        from google.genai import types
+        
+        client = genai.Client(api_key=self.api_key)
+        
+        response = client.models.generate_content(
+            model=self.model,
+            contents=f"{system_prompt}\n\n{user_prompt}",
+            config=types.GenerateContentConfig(
+                temperature=temperature,
+                max_output_tokens=max_tokens,
+            ),
+        )
+        
+        # Extract usage info
+        usage = {}
+        if response.usage_metadata:
+            usage = {
+                "prompt_tokens": response.usage_metadata.prompt_token_count or 0,
+                "completion_tokens": response.usage_metadata.candidates_token_count or 0,
+            }
+        
+        return LLMResponse(
+            content=response.text or "",
+            model=self.model,
+            usage=usage,
+            finish_reason="stop",
+        )
+
+
 class MockLLMClient(BaseLLMClient):
     """
     Mock LLM Client for testing.
@@ -531,11 +595,9 @@ def create_llm_client(
             model=model or "claude-3-5-sonnet-20241022",
         )
     elif provider == "google":
-        # Google/Gemini uses OpenAI-compatible API format
-        return OpenAIClient(
+        return GeminiClient(
             api_key=api_key,
-            model=model or "gemini-2.0-flash",
-            base_url="https://generativelanguage.googleapis.com/v1beta/openai",
+            model=model or "gemini-2.5-flash",
         )
     elif provider == "mock":
         return MockLLMClient()

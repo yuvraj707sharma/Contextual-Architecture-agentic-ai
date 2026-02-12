@@ -39,6 +39,7 @@ from .llm_client import (
     OllamaClient,
     OpenAIClient,
     AnthropicClient,
+    GeminiClient,
     MockLLMClient,
     create_llm_client,
 )
@@ -70,6 +71,7 @@ __all__ = [
     "OllamaClient",
     "OpenAIClient",
     "AnthropicClient",
+    "GeminiClient",
     "MockLLMClient",
     "create_llm_client",
     # Config
