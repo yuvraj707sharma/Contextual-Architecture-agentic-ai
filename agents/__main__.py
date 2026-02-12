@@ -219,13 +219,22 @@ async def run(args) -> int:
         logger.error(f"Repository path does not exist: {repo_path}")
         return 1
 
-    # Determine provider
-    provider = args.provider or auto_detect_provider()
+    # Determine provider and API key
+    from .llm_client import detect_provider_from_env
+    
+    if args.provider:
+        provider = args.provider
+        detected_key = args.api_key
+    else:
+        provider, detected_key = detect_provider_from_env()
+    
+    # CLI --api-key flag overrides auto-detected key
+    api_key = args.api_key or detected_key
 
     if provider == "mock":
         logger.warning(
             "No LLM provider detected. Using mock (placeholder code). "
-            "Set DEEPSEEK_API_KEY, OPENAI_API_KEY, or ANTHROPIC_API_KEY "
+            "Set DEEPSEEK_API_KEY, OPENAI_API_KEY, GOOGLE_API_KEY, or ANTHROPIC_API_KEY "
             "to enable real code generation."
         )
 
@@ -233,7 +242,7 @@ async def run(args) -> int:
     config = AgentConfig(
         llm_provider=provider,
         llm_model=args.model,
-        llm_api_key=args.api_key,
+        llm_api_key=api_key,
         max_retries=args.max_retries,
         use_external_tools=not args.no_external_tools,
         log_level="DEBUG" if args.verbose else "INFO",
