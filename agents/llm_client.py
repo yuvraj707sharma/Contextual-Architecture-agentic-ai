@@ -343,8 +343,140 @@ class MockLLMClient(BaseLLMClient):
 
 
 # Factory function
+
+def detect_provider_from_key(api_key: str) -> str:
+    """
+    Detect LLM provider from an API key's prefix.
+    
+    API key patterns (as of 2026):
+      - Anthropic:  sk-ant-*
+      - OpenAI:     sk-proj-* or sk-* (longer, typically 50+ chars)
+      - DeepSeek:   sk-* (shorter, typically 32-40 chars)
+      - Google:     AIza*
+      - Mistral:    starts with alphanumeric, no prefix
+    
+    This is a best-effort heuristic. Users can always override
+    with --provider or CA_LLM_PROVIDER.
+    """
+    if not api_key or not isinstance(api_key, str):
+        return "mock"
+    
+    key = api_key.strip()
+    
+    # Anthropic — most distinctive prefix
+    if key.startswith("sk-ant-"):
+        return "anthropic"
+    
+    # Google Gemini
+    if key.startswith("AIza"):
+        return "google"
+    
+    # OpenAI vs DeepSeek — both use "sk-" prefix
+    # OpenAI keys typically start with "sk-proj-" (project keys) 
+    # or are 51+ characters long
+    if key.startswith("sk-proj-"):
+        return "openai"
+    
+    if key.startswith("sk-"):
+        # DeepSeek keys are typically shorter (32-50 chars)
+        # OpenAI keys are typically longer (51-200+ chars)
+        # This is a heuristic — not guaranteed
+        if len(key) > 60:
+            return "openai"
+        else:
+            return "deepseek"
+    
+    # Unknown prefix — return unknown, let caller decide
+    return "unknown"
+
+
+def detect_provider_from_env() -> tuple:
+    """
+    Auto-detect LLM provider from environment variables.
+    
+    Checks for known env var names in priority order.
+    Returns (provider_name, api_key) tuple.
+    
+    Priority:
+      1. Explicit CA_LLM_PROVIDER (user's choice — always wins)
+      2. ANTHROPIC_API_KEY (most distinctive prefix)
+      3. OPENAI_API_KEY
+      4. DEEPSEEK_API_KEY
+      5. GOOGLE_API_KEY / GEMINI_API_KEY
+      6. Ollama (check if running locally)
+      7. Mock (fallback)
+    """
+    import os
+    
+    # If user explicitly set the provider, respect it
+    explicit_provider = os.environ.get("CA_LLM_PROVIDER")
+    if explicit_provider:
+        # Find the matching key
+        key_map = {
+            "anthropic": "ANTHROPIC_API_KEY",
+            "openai": "OPENAI_API_KEY",
+            "deepseek": "DEEPSEEK_API_KEY",
+            "google": "GOOGLE_API_KEY",
+            "ollama": None,
+            "mock": None,
+        }
+        env_var = key_map.get(explicit_provider)
+        api_key = os.environ.get(env_var) if env_var else None
+        # Also check the generic CA_LLM_API_KEY
+        if not api_key:
+            api_key = os.environ.get("CA_LLM_API_KEY")
+        return (explicit_provider, api_key)
+    
+    # Auto-detect from env var names (most reliable method)
+    env_checks = [
+        ("ANTHROPIC_API_KEY", "anthropic"),
+        ("OPENAI_API_KEY", "openai"),
+        ("DEEPSEEK_API_KEY", "deepseek"),
+        ("GOOGLE_API_KEY", "google"),
+        ("GEMINI_API_KEY", "google"),
+    ]
+    
+    for env_var, provider in env_checks:
+        key = os.environ.get(env_var)
+        if key:
+            # Double-check with prefix detection
+            detected = detect_provider_from_key(key)
+            if detected != "unknown" and detected != provider:
+                # Key prefix doesn't match env var name — warn user
+                import warnings
+                warnings.warn(
+                    f"API key in {env_var} looks like a {detected} key, "
+                    f"not {provider}. Using {detected} instead. "
+                    f"Set CA_LLM_PROVIDER={provider} to override.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+                return (detected, key)
+            return (provider, key)
+    
+    # Check if a generic API key was provided
+    generic_key = os.environ.get("CA_LLM_API_KEY")
+    if generic_key:
+        detected = detect_provider_from_key(generic_key)
+        if detected != "unknown":
+            return (detected, generic_key)
+        # Can't determine provider from key alone
+        return ("unknown", generic_key)
+    
+    # Check if Ollama is running locally
+    try:
+        import httpx
+        resp = httpx.get("http://localhost:11434/api/version", timeout=2)
+        if resp.status_code == 200:
+            return ("ollama", None)
+    except Exception:
+        pass
+    
+    return ("mock", None)
+
+
 def create_llm_client(
-    provider: str = "deepseek",
+    provider: str = "auto",
     model: Optional[str] = None,
     api_key: Optional[str] = None,
 ) -> BaseLLMClient:
@@ -352,13 +484,33 @@ def create_llm_client(
     Factory function to create an LLM client.
     
     Args:
-        provider: One of 'deepseek', 'ollama', 'openai', 'anthropic', 'mock'
+        provider: One of 'deepseek', 'ollama', 'openai', 'anthropic', 
+                  'google', 'mock', or 'auto' (auto-detect)
         model: Optional model override
         api_key: Optional API key override
     
     Returns:
         BaseLLMClient instance
     """
+    # Auto-detect if provider not specified or is "auto"
+    if provider in ("auto", None, ""):
+        if api_key:
+            # Detect from key prefix
+            provider = detect_provider_from_key(api_key)
+        else:
+            # Detect from environment variables
+            provider, api_key = detect_provider_from_env()
+    
+    if provider == "unknown":
+        raise ValueError(
+            "Could not auto-detect LLM provider. Please set one of:\n"
+            "  - CA_LLM_PROVIDER=deepseek (+ DEEPSEEK_API_KEY)\n"
+            "  - CA_LLM_PROVIDER=openai (+ OPENAI_API_KEY)\n"
+            "  - CA_LLM_PROVIDER=anthropic (+ ANTHROPIC_API_KEY)\n"
+            "  - CA_LLM_PROVIDER=google (+ GOOGLE_API_KEY)\n"
+            "  - CA_LLM_PROVIDER=ollama (no key needed)\n"
+        )
+    
     if provider == "deepseek":
         return DeepSeekClient(
             api_key=api_key,
@@ -378,7 +530,18 @@ def create_llm_client(
             api_key=api_key,
             model=model or "claude-3-5-sonnet-20241022",
         )
+    elif provider == "google":
+        # Google/Gemini uses OpenAI-compatible API format
+        return OpenAIClient(
+            api_key=api_key,
+            model=model or "gemini-2.0-flash",
+            base_url="https://generativelanguage.googleapis.com/v1beta/openai",
+        )
     elif provider == "mock":
         return MockLLMClient()
     else:
-        raise ValueError(f"Unknown provider: {provider}")
+        raise ValueError(
+            f"Unknown provider: {provider}. "
+            f"Supported: deepseek, ollama, openai, anthropic, google, mock"
+        )
+

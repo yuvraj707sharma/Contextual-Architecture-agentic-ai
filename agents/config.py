@@ -84,13 +84,16 @@ class AgentConfig:
                 except (ValueError, TypeError):
                     pass  # skip malformed env vars
 
-        # Also check standard API key env vars as fallbacks
-        if "llm_api_key" not in kwargs:
-            for key in ("DEEPSEEK_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"):
-                val = os.environ.get(key)
-                if val:
-                    kwargs["llm_api_key"] = val
-                    break
+        # Auto-detect provider + key from environment
+        if "llm_provider" not in kwargs or "llm_api_key" not in kwargs:
+            from .llm_client import detect_provider_from_env
+            detected_provider, detected_key = detect_provider_from_env()
+            
+            if "llm_provider" not in kwargs and detected_provider != "mock":
+                kwargs["llm_provider"] = detected_provider
+            
+            if "llm_api_key" not in kwargs and detected_key:
+                kwargs["llm_api_key"] = detected_key
 
         return cls(**kwargs)
 

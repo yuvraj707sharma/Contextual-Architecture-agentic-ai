@@ -71,7 +71,7 @@ Examples:
         "--provider", "-p",
         type=str,
         default=None,
-        choices=["deepseek", "openai", "anthropic", "ollama", "mock"],
+        choices=["deepseek", "openai", "anthropic", "google", "ollama", "mock"],
         help="LLM provider (default: auto-detect from env vars)",
     )
     parser.add_argument(
@@ -122,21 +122,9 @@ Examples:
 
 def auto_detect_provider() -> str:
     """Auto-detect LLM provider from available environment variables."""
-    if os.environ.get("DEEPSEEK_API_KEY"):
-        return "deepseek"
-    if os.environ.get("OPENAI_API_KEY"):
-        return "openai"
-    if os.environ.get("ANTHROPIC_API_KEY"):
-        return "anthropic"
-    # Check if Ollama is running locally
-    try:
-        import httpx
-        resp = httpx.get("http://localhost:11434/api/version", timeout=2)
-        if resp.status_code == 200:
-            return "ollama"
-    except Exception:
-        pass
-    return "mock"
+    from .llm_client import detect_provider_from_env
+    provider, _ = detect_provider_from_env()
+    return provider
 
 
 def print_result(result: OrchestrationResult, orchestrator: Orchestrator, as_json: bool = False):
