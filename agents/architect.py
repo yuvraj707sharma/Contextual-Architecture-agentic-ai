@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 
 from .base import BaseAgent, AgentContext, AgentResponse, AgentRole
+from .context_budget import estimate_tokens, truncate_to_tokens
 
 
 @dataclass
@@ -73,8 +74,16 @@ class ArchitectOutput:
             "config_files": self.config_files,
         }
     
-    def to_prompt_context(self) -> str:
-        """Convert to string for LLM prompts."""
+    def to_prompt_context(self, max_tokens: int = 0) -> str:
+        """Convert to string for LLM prompts.
+        
+        V2: Returns focused output (diff not map).
+        Only target file + top 3 utilities + top 3 related files.
+        The full directory tree is noise for the Implementer.
+        
+        Args:
+            max_tokens: If > 0, truncate output to fit this token budget.
+        """
         parts = []
         
         if self.target_file:
@@ -85,20 +94,36 @@ class ArchitectOutput:
         
         if self.existing_utilities:
             parts.append("\n## Existing Utilities to Reuse")
-            for util in self.existing_utilities:
+            # V2: Only top 3 most relevant utilities (not all 15)
+            for util in self.existing_utilities[:3]:
                 parts.append(f"- `{util['name']}` in `{util['file']}`: {util.get('description', '')}")
+            if len(self.existing_utilities) > 3:
+                parts.append(f"  _(+{len(self.existing_utilities) - 3} more, showing top 3)_")
         
         if self.imports_needed:
             parts.append("\n## Imports Needed")
             for imp in self.imports_needed:
                 parts.append(f"- `{imp}`")
         
-        if self.structure:
-            parts.append("\n## Project Structure")
-            for dir_name, files in list(self.structure.items())[:5]:
+        if self.related_files:
+            parts.append("\n## Related Files")
+            # V2: Only top 3 related files (not 10)
+            for f in self.related_files[:3]:
+                parts.append(f"- `{f}`")
+        
+        # V2: Skip full structure dump — the Implementer doesn't need to know
+        # about tests/fixtures/mock_data.json when writing a feature.
+        if self.structure and not self.target_file:
+            parts.append("\n## Project Layout (summary)")
+            for dir_name, files in list(self.structure.items())[:3]:
                 parts.append(f"- **{dir_name}/**: {len(files)} files")
         
-        return "\n".join(parts)
+        result = "\n".join(parts)
+        
+        if max_tokens > 0:
+            result = truncate_to_tokens(result, max_tokens)
+        
+        return result
 
 
 class ArchitectAgent(BaseAgent):
@@ -266,7 +291,10 @@ Return a JSON object with:
         language: str,
         user_request: str
     ) -> List[Dict[str, str]]:
-        """Find existing utilities that could be reused."""
+        """Find existing utilities that could be reused.
+        
+        V2: Returns only top 3 most relevant utilities (not all 15).
+        """
         utilities = []
         extensions = self.LANG_EXTENSIONS.get(language, [])
         
@@ -298,7 +326,7 @@ Return a JSON object with:
                 except Exception:
                     continue
         
-        return utilities[:15]  # Limit
+        return utilities[:3]  # V2: Top 3 only (was 15)
     
     def _extract_exports(self, file_path: Path, language: str) -> List[str]:
         """Extract exported functions/classes from a file."""
@@ -420,7 +448,10 @@ Return a JSON object with:
         user_request: str,
         language: str
     ) -> List[str]:
-        """Find files that might be related to the user's request."""
+        """Find files that might be related to the user's request.
+        
+        V2: Returns only top 3 most related files (not 10).
+        """
         related = []
         request_lower = user_request.lower()
         
@@ -442,7 +473,7 @@ Return a JSON object with:
                 if any(kw in file_name_lower for kw in keywords):
                     related.append(str(file_path.relative_to(repo_path)))
         
-        return related[:10]  # Limit
+        return related[:3]  # V2: Top 3 only (was 10)
     
     def _generate_summary(self, output: ArchitectOutput) -> str:
         """Generate a human-readable summary."""

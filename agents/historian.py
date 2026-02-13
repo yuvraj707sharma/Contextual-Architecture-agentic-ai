@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional
 
 from .base import BaseAgent, AgentContext, AgentResponse, AgentRole
+from .context_budget import estimate_tokens, truncate_to_tokens
 
 
 @dataclass
@@ -72,12 +73,18 @@ class HistorianOutput:
             "common_mistakes": self.common_mistakes,
         }
     
-    def to_prompt_context(self) -> str:
-        """Convert to a string for LLM prompts."""
+    def to_prompt_context(self, max_tokens: int = 0) -> str:
+        """Convert to a string for LLM prompts.
+        
+        Args:
+            max_tokens: If > 0, truncate output to fit this token budget.
+                        Patterns are included in relevance order (highest first).
+        """
         parts = []
         
         if self.patterns:
             parts.append("## Detected Patterns")
+            # Patterns are already sorted by relevance_score (highest first)
             for p in self.patterns:
                 parts.append(f"\n### {p.pattern_type.title()} (from {p.source})")
                 parts.append(f"{p.description}")
@@ -93,7 +100,12 @@ class HistorianOutput:
             for mistake in self.common_mistakes:
                 parts.append(f"- {mistake}")
         
-        return "\n".join(parts)
+        result = "\n".join(parts)
+        
+        if max_tokens > 0:
+            result = truncate_to_tokens(result, max_tokens)
+        
+        return result
 
 
 class HistorianAgent(BaseAgent):
@@ -303,6 +315,8 @@ Return a JSON object with:
         Analyze local files for patterns using heuristics.
         
         FIXED: Now actually scans files from disk and runs regex patterns.
+        V2: Adds relevance scoring — patterns are ranked by keyword overlap
+            with the user request. Only top N patterns are returned.
         """
         import os
         from pathlib import Path
@@ -348,7 +362,22 @@ Return a JSON object with:
             if p.pattern_type not in seen_types or p.confidence > seen_types[p.pattern_type].confidence:
                 seen_types[p.pattern_type] = p
         
-        return list(seen_types.values())
+        deduped = list(seen_types.values())
+        
+        # V2: Relevance scoring — rank patterns by keyword overlap with request
+        request_words = set(context.user_request.lower().split())
+        scored = []
+        for p in deduped:
+            pattern_words = set(p.description.lower().split())
+            overlap = len(request_words & pattern_words)
+            # Bonus for high-confidence patterns
+            score = overlap + (p.confidence / 100.0)
+            scored.append((score, p))
+        
+        # Sort by relevance score (highest first)
+        scored.sort(key=lambda x: x[0], reverse=True)
+        
+        return [p for _, p in scored]
     
     def _scan_file_for_patterns(
         self, 
