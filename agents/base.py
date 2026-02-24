@@ -14,6 +14,7 @@ import json
 
 class AgentRole(Enum):
     """Roles in the agent swarm."""
+    PLANNER = "planner"          # Pre-generation planning
     HISTORIAN = "historian"      # Analyzes PR history and patterns
     ARCHITECT = "architect"      # Maps codebase structure
     IMPLEMENTER = "implementer"  # Generates code

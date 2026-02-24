@@ -3,10 +3,11 @@ Orchestrator - Chains agents together for end-to-end code generation.
 
 This is the "conductor" that:
 1. Takes a user request
-2. Runs Historian → Architect → Implementer → Reviewer
+2. Runs PR Search → Parallel Discovery → Planner → Implementer → Reviewer
 3. Handles the rejection loop if code fails review
 4. Uses SafeCodeWriter for permission-based file writing
-5. Returns the final generated code
+5. Writes plan.md to workspace and re-reads on every retry
+6. Returns the final generated code
 """
 
 import asyncio
@@ -15,12 +16,15 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional
 
 from .base import AgentContext, AgentResponse, AgentRole
+from .planner import PlannerAgent
 from .historian import HistorianAgent
 from .architect import ArchitectAgent
 from .implementer import ImplementerAgent
 from .reviewer import ReviewerAgent, ValidationResult
+from .pr_search import PRSearcher
 from .safe_writer import SafeCodeWriter, ChangeSet
 from .style_fingerprint import StyleAnalyzer
+from .workspace import Workspace
 from .llm_client import BaseLLMClient
 from .config import AgentConfig
 from .logger import get_logger, timed_operation, PipelineMetrics
@@ -66,20 +70,22 @@ class Orchestrator:
     Orchestrates the agent pipeline.
     
     Pipeline:
-    1. Historian: Gather patterns and conventions
-    2. Style Analyzer: Extract exact coding style
-    3. Architect: Map structure and find utilities
-    4. Implementer: Generate code with LLM
+    1. PR Search: Find relevant past PRs (parallel with discovery)
+    2. Parallel Discovery: Style + Historian + Architect
+    3. Planner: Create structured plan (plan.md)
+    4. Implementer: Generate code with LLM (re-reads plan.md)
     5. Reviewer: Validate code (syntax, security, lint)
     6. SafeWriter: Plan safe file modifications
     
     If Reviewer fails, feed errors back to Implementer and retry.
+    Plan.md is re-read from disk on every retry (Manus technique).
     """
     
     def __init__(
         self, 
         llm_client: Optional[BaseLLMClient] = None, 
         config: Optional[AgentConfig] = None,
+        pr_data_path: Optional[str] = None,
     ):
         """
         Initialize the orchestrator.
@@ -87,6 +93,7 @@ class Orchestrator:
         Args:
             llm_client: LLM client for Implementer (overrides config provider)
             config: Pipeline configuration (defaults to AgentConfig())
+            pr_data_path: Path to pr_evolution.jsonl for PR search
         """
         self.config = config or AgentConfig()
         self.llm_client = llm_client
@@ -97,10 +104,16 @@ class Orchestrator:
         )
         
         # Initialize agents
+        self.planner = PlannerAgent(llm_client)
         self.historian = HistorianAgent()
         self.architect = ArchitectAgent()
         self.implementer = ImplementerAgent(llm_client)
         self.reviewer = ReviewerAgent()
+        
+        # PR Search
+        self.pr_searcher = PRSearcher()
+        if pr_data_path:
+            self.pr_searcher.load(pr_data_path)
     
     async def run(
         self, 
@@ -130,6 +143,9 @@ class Orchestrator:
             language=language,
         )
         
+        # Initialize workspace for filesystem-backed memory
+        workspace = Workspace(repo_path)
+        
         self.logger.info(
             "Starting orchestration",
             extra={"agent": "orchestrator", "step": "start"},
@@ -137,17 +153,24 @@ class Orchestrator:
         self.logger.debug(f"Request: {user_request[:80]}")
         self.logger.debug(f"Repo: {repo_path} | Language: {language}")
         
-        # ── PARALLEL DISCOVERY PHASE ─────────────────────────────
-        # StyleAnalyzer, Historian, and Architect are independent.
-        # They all just scan the codebase — none needs the other's output.
-        # Running them concurrently cuts discovery time by ~3x.
+        # ── PR SEARCH + PARALLEL DISCOVERY PHASE ─────────────────
+        # PR Search, StyleAnalyzer, Historian, and Architect are all
+        # independent — they scan different data sources.
+        # Running them all concurrently for maximum speed.
         
         self.logger.info(
-            "Starting parallel discovery (Style + Historian + Architect)",
+            "Starting parallel discovery (PR Search + Style + Historian + Architect)",
             extra={"agent": "orchestrator", "step": "parallel_discovery"},
         )
         
-        # Launch all three concurrently
+        # Launch all four concurrently
+        pr_task = asyncio.ensure_future(
+            asyncio.to_thread(
+                lambda: self.pr_searcher.search_to_prompt(
+                    user_request, max_results=3, max_tokens=1000
+                )
+            )
+        )
         style_task = asyncio.ensure_future(
             asyncio.to_thread(lambda: StyleAnalyzer(repo_path, language).analyze())
         )
@@ -156,8 +179,10 @@ class Orchestrator:
         
         # Wait for all to complete
         try:
-            style_fingerprint, historian_response, architect_response = (
-                await asyncio.gather(style_task, historian_task, architect_task)
+            pr_context, style_fingerprint, historian_response, architect_response = (
+                await asyncio.gather(
+                    pr_task, style_task, historian_task, architect_task
+                )
             )
         except Exception as e:
             result.errors.append(f"Parallel discovery failed: {e}")
@@ -167,8 +192,17 @@ class Orchestrator:
             )
             return result
         
+        # Process PR Search result
+        if pr_context:
+            context.prior_context["pr_history"] = pr_context
+            self.logger.info(
+                f"PR search found relevant history ({len(pr_context)} chars)",
+                extra={"agent": "pr_search"},
+            )
+        
         # Process StyleAnalyzer result
         context.prior_context["style_fingerprint"] = style_fingerprint
+        workspace.write_discovery("style", style_fingerprint.to_dict())
         self.logger.debug(
             f"Style: {style_fingerprint.function_naming} functions, "
             f"{style_fingerprint.logger_library} logging"
@@ -181,6 +215,7 @@ class Orchestrator:
             return result
         result.agent_summaries["historian"] = historian_response.summary
         context.prior_context["historian"] = historian_response.data
+        workspace.write_discovery("historian", historian_response.data)
         
         # Process Architect result
         if not architect_response.success:
@@ -190,12 +225,49 @@ class Orchestrator:
         result.agent_summaries["architect"] = architect_response.summary
         context.prior_context["architect"] = architect_response.data
         result.target_file = architect_response.data.get("target_file", "")
+        workspace.write_discovery("architect", architect_response.data)
+        
+        # ── PLANNER PHASE ────────────────────────────────────────
+        # Creates a structured plan BEFORE any code generation.
+        # The plan is written to workspace/plan.md and re-read
+        # by the Implementer on every retry attempt.
+        
+        self.logger.info(
+            "Running Planner Agent",
+            extra={"agent": "orchestrator", "step": "planner"},
+        )
+        
+        with timed_operation(self.logger, "planner"):
+            planner_response = await self.planner.process(context)
+        
+        if not planner_response.success:
+            result.errors.append(f"Planner failed: {planner_response.summary}")
+            self.logger.error("Planner failed", extra={"agent": "planner"})
+            return result
+        
+        result.agent_summaries["planner"] = planner_response.summary
+        plan_markdown = planner_response.data.get("plan_markdown", "")
+        complexity = planner_response.data.get("complexity", "medium")
+        
+        # Write plan to workspace — this is re-read on every retry
+        workspace.write_plan(plan_markdown)
+        context.prior_context["plan"] = planner_response.data.get("plan", {})
+        
+        self.logger.info(
+            f"Plan created: {complexity} complexity",
+            extra={"agent": "planner"},
+        )
         
         # Step 4: Generate and validate code (with retry loop)
         max_retries = self.config.max_retries
         
         for attempt in range(1, max_retries + 1):
             result.attempts = attempt
+            
+            # Re-read plan from disk on every attempt
+            # (Manus technique: pushes plan into recent attention window)
+            fresh_plan = workspace.read_plan()
+            context.prior_context["plan_markdown"] = fresh_plan
             
             # Generate code
             with timed_operation(self.logger, f"implementer_attempt_{attempt}"):
@@ -244,6 +316,13 @@ class Orchestrator:
                     extra={"agent": "reviewer"},
                 )
                 context.prior_context["validation_errors"] = validation.to_prompt_feedback()
+                
+                # Store attempt for sliding window
+                workspace.write_attempt(
+                    attempt,
+                    generated_code,
+                    validation.errors if hasattr(validation, 'errors') else [],
+                )
                 
                 if attempt < max_retries:
                     self.logger.info(

@@ -2,6 +2,7 @@
 Contextual Architect — Multi-Agent Code Generation System.
 
 Agents:
+  - PlannerAgent: Pre-generation planning and complexity scoring
   - HistorianAgent: Mines patterns and conventions from a codebase
   - ArchitectAgent: Maps project structure and finds utilities
   - ImplementerAgent: Generates code using LLM with full context
@@ -26,11 +27,13 @@ Usage:
 """
 
 from .base import BaseAgent, AgentContext, AgentResponse, AgentRole
+from .planner import PlannerAgent, PlannerOutput
 from .historian import HistorianAgent
 from .architect import ArchitectAgent
 from .implementer import ImplementerAgent
 from .reviewer import ReviewerAgent, ValidationResult, validate_code
 from .style_fingerprint import StyleAnalyzer, StyleFingerprint
+from .pr_search import PRSearcher, PRSummary
 from .orchestrator import Orchestrator, OrchestrationResult
 from .safe_writer import SafeCodeWriter, ChangeSet, ProposedChange
 from .llm_client import (
@@ -49,6 +52,7 @@ from .logger import get_logger, PipelineMetrics
 __all__ = [
     # Agents
     "BaseAgent",
+    "PlannerAgent",
     "HistorianAgent",
     "ArchitectAgent",
     "ImplementerAgent",
@@ -61,8 +65,11 @@ __all__ = [
     "AgentContext",
     "AgentResponse",
     "AgentRole",
+    "PlannerOutput",
     "ValidationResult",
     "StyleFingerprint",
+    "PRSearcher",
+    "PRSummary",
     "ChangeSet",
     "ProposedChange",
     # LLM
