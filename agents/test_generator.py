@@ -103,11 +103,12 @@ class TestGeneratorAgent(BaseAgent):
 
     @property
     def system_prompt(self) -> str:
-        return (
-            "You generate unit tests for code. "
-            "Each test maps to an acceptance criterion from the plan. "
-            "Tests should be practical, not trivial."
-        )
+        return self._load_prompt()
+
+    @classmethod
+    def _load_prompt(cls) -> str:
+        from .system_prompts import TEST_GENERATOR_SYSTEM_PROMPT
+        return TEST_GENERATOR_SYSTEM_PROMPT
 
     async def process(self, context: AgentContext) -> AgentResponse:
         """

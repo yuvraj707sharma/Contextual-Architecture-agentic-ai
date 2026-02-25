@@ -33,6 +33,8 @@ from .config import AgentConfig
 from .logger import get_logger, timed_operation, PipelineMetrics
 from .feedback import FeedbackCollector
 from .output_validator import validate_agent_output, validate_reviewer_verdict, try_extract_json
+from .clarification_handler import ClarificationHandler
+from .feedback_reader import FeedbackReader
 
 
 @dataclass
@@ -239,6 +241,25 @@ class Orchestrator:
         context.prior_context["architect"] = architect_response.data
         result.target_file = architect_response.data.get("target_file", "")
         workspace.write_discovery("architect", architect_response.data)
+        
+        # ── CLARIFICATION CHECK ──────────────────────────────────
+        # Handle CLARIFICATION_NEEDED signals from Architect.
+        clarification_handler = ClarificationHandler()
+        should_continue, processed = clarification_handler.handle(architect_response.data)
+        
+        if not should_continue:
+            result.errors.append(
+                f"Clarification required: {processed.get('ambiguity', 'unknown')}"
+            )
+            result.agent_summaries["clarification"] = processed
+            self.logger.warning(
+                "Pipeline halted: clarification needed",
+                extra={"agent": "orchestrator", "step": "clarification"},
+            )
+            return result
+        
+        # Update architect data with cleaned output (signal keys removed)
+        context.prior_context["architect"] = processed
         
         # ── PLANNER PHASE ────────────────────────────────────────
         # Creates a structured plan BEFORE any code generation.

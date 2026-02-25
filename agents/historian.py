@@ -158,8 +158,32 @@ class HistorianAgent(BaseAgent):
         This runs in two modes:
         1. With LLM: Uses the LLM to reason about patterns
         2. Without LLM: Uses heuristic pattern matching (fallback)
+        
+        Also reads historical feedback (if available) to surface
+        recurring issues and convention gaps.
         """
         output = HistorianOutput()
+        
+        # Load historical feedback patterns (closes the learning loop)
+        try:
+            from .feedback_reader import FeedbackReader
+            feedback_dir = None
+            if context.repo_path:
+                from pathlib import Path
+                feedback_dir = Path(context.repo_path) / ".contextual-architect" / "feedback"
+            if feedback_dir and feedback_dir.exists():
+                reader = FeedbackReader(feedback_dir)
+                feedback_patterns = reader.get_historical_patterns()
+                fp = feedback_patterns.get("feedback_patterns", {})
+                if fp.get("total_runs_analyzed", 0) > 0:
+                    context.prior_context["feedback_patterns"] = fp
+                    # Surface recurring issues as anti-patterns
+                    for issue in fp.get("recurring_issues", []):
+                        output.common_mistakes.append(
+                            f"[RECURRING x{issue['occurrences']}] {issue['issue']}"
+                        )
+        except Exception:
+            pass  # Feedback is optional — never block the pipeline
         
         try:
             # Step 1: Search for relevant PRs (if GitHub client available)

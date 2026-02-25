@@ -96,7 +96,12 @@ class AlignmentAgent(BaseAgent):
 
     @property
     def system_prompt(self) -> str:
-        return "You validate that a code generation plan correctly addresses the user's request."
+        return self._load_prompt()
+
+    @classmethod
+    def _load_prompt(cls) -> str:
+        from .system_prompts import ALIGNMENT_SYSTEM_PROMPT
+        return ALIGNMENT_SYSTEM_PROMPT
 
     async def process(self, context: AgentContext) -> AgentResponse:
         """

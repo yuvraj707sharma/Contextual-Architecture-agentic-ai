@@ -42,6 +42,9 @@ from .pr_search import PRSearcher, PRSummary
 from .orchestrator import Orchestrator, OrchestrationResult
 from .safe_writer import SafeCodeWriter, ChangeSet, ProposedChange
 from .feedback import FeedbackCollector, FeedbackEntry
+from .output_validator import validate_agent_output, validate_reviewer_verdict
+from .clarification_handler import ClarificationHandler
+from .feedback_reader import FeedbackReader
 from .llm_client import (
     BaseLLMClient,
     DeepSeekClient,
@@ -100,4 +103,7 @@ __all__ = [
     # Feedback
     "FeedbackCollector",
     "FeedbackEntry",
+    # Clarification & Feedback Loop
+    "ClarificationHandler",
+    "FeedbackReader",
 ]
