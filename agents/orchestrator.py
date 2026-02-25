@@ -318,10 +318,14 @@ class Orchestrator:
                 context.prior_context["validation_errors"] = validation.to_prompt_feedback()
                 
                 # Store attempt for sliding window
+                error_strings = [
+                    e.to_string() if hasattr(e, 'to_string') else str(e)
+                    for e in (validation.errors if hasattr(validation, 'errors') else [])
+                ]
                 workspace.write_attempt(
                     attempt,
                     generated_code,
-                    validation.errors if hasattr(validation, 'errors') else [],
+                    error_strings,
                 )
                 
                 if attempt < max_retries:

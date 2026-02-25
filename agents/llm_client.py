@@ -7,6 +7,7 @@ Supports:
 - OpenAI (GPT-4o)
 - Anthropic (Claude)
 - Google Gemini (free tier available)
+- Groq (fast inference, free tier available)
 
 The system can swap LLMs freely - the agents don't care which one is used.
 """
@@ -373,6 +374,73 @@ class GeminiClient(BaseLLMClient):
         )
 
 
+class GroqClient(BaseLLMClient):
+    """
+    Groq API Client.
+    
+    - Models: llama-3.3-70b-versatile, llama-4-maverick-17b-128e-instruct, etc.
+    - Cost: Free tier (30 RPM), paid tier available
+    - Quality: Fast inference, good for code
+    
+    Get API key: https://console.groq.com/
+    """
+    
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        model: str = "llama-3.3-70b-versatile",
+        base_url: str = "https://api.groq.com/openai/v1",
+    ):
+        self.api_key = api_key or os.getenv("GROQ_API_KEY")
+        if not self.api_key:
+            raise ValueError("GROQ_API_KEY not found")
+        
+        self.model = model
+        self.base_url = base_url
+    
+    @property
+    def model_name(self) -> str:
+        return f"groq/{self.model}"
+    
+    async def generate(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        temperature: float = 0.1,
+        max_tokens: int = 4096,
+    ) -> LLMResponse:
+        import httpx
+        
+        async with httpx.AsyncClient(timeout=120) as client:
+            response = await client.post(
+                f"{self.base_url}/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": self.model,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    "temperature": temperature,
+                    "max_tokens": max_tokens,
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+        
+        choice = data["choices"][0]
+        return LLMResponse(
+            content=choice["message"]["content"],
+            model=self.model,
+            usage=data.get("usage", {}),
+            finish_reason=choice.get("finish_reason", "stop"),
+            raw_response=data,
+        )
+
+
 class MockLLMClient(BaseLLMClient):
     """
     Mock LLM Client for testing.
@@ -435,6 +503,10 @@ def detect_provider_from_key(api_key: str) -> str:
     if key.startswith("AIza"):
         return "google"
     
+    # Groq
+    if key.startswith("gsk_"):
+        return "groq"
+    
     # OpenAI vs DeepSeek — both use "sk-" prefix
     # OpenAI keys typically start with "sk-proj-" (project keys) 
     # or are 51+ characters long
@@ -481,6 +553,7 @@ def detect_provider_from_env() -> tuple:
             "openai": "OPENAI_API_KEY",
             "deepseek": "DEEPSEEK_API_KEY",
             "google": "GOOGLE_API_KEY",
+            "groq": "GROQ_API_KEY",
             "ollama": None,
             "mock": None,
         }
@@ -498,6 +571,7 @@ def detect_provider_from_env() -> tuple:
         ("DEEPSEEK_API_KEY", "deepseek"),
         ("GOOGLE_API_KEY", "google"),
         ("GEMINI_API_KEY", "google"),
+        ("GROQ_API_KEY", "groq"),
     ]
     
     for env_var, provider in env_checks:
@@ -572,6 +646,7 @@ def create_llm_client(
             "  - CA_LLM_PROVIDER=openai (+ OPENAI_API_KEY)\n"
             "  - CA_LLM_PROVIDER=anthropic (+ ANTHROPIC_API_KEY)\n"
             "  - CA_LLM_PROVIDER=google (+ GOOGLE_API_KEY)\n"
+            "  - CA_LLM_PROVIDER=groq (+ GROQ_API_KEY)\n"
             "  - CA_LLM_PROVIDER=ollama (no key needed)\n"
         )
     
@@ -599,11 +674,16 @@ def create_llm_client(
             api_key=api_key,
             model=model or "gemini-2.5-flash",
         )
+    elif provider == "groq":
+        return GroqClient(
+            api_key=api_key,
+            model=model or "llama-3.3-70b-versatile",
+        )
     elif provider == "mock":
         return MockLLMClient()
     else:
         raise ValueError(
             f"Unknown provider: {provider}. "
-            f"Supported: deepseek, ollama, openai, anthropic, google, mock"
+            f"Supported: deepseek, ollama, openai, anthropic, google, groq, mock"
         )
 
