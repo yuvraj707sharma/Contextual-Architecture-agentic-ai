@@ -17,9 +17,11 @@ from typing import List, Dict, Any, Optional
 
 from .base import AgentContext, AgentResponse, AgentRole
 from .planner import PlannerAgent
+from .alignment import AlignmentAgent
 from .historian import HistorianAgent
 from .architect import ArchitectAgent
 from .implementer import ImplementerAgent
+from .test_generator import TestGeneratorAgent
 from .reviewer import ReviewerAgent, ValidationResult
 from .pr_search import PRSearcher
 from .safe_writer import SafeCodeWriter, ChangeSet
@@ -28,6 +30,7 @@ from .workspace import Workspace
 from .llm_client import BaseLLMClient
 from .config import AgentConfig
 from .logger import get_logger, timed_operation, PipelineMetrics
+from .feedback import FeedbackCollector
 
 
 @dataclass
@@ -73,9 +76,12 @@ class Orchestrator:
     1. PR Search: Find relevant past PRs (parallel with discovery)
     2. Parallel Discovery: Style + Historian + Architect
     3. Planner: Create structured plan (plan.md)
-    4. Implementer: Generate code with LLM (re-reads plan.md)
-    5. Reviewer: Validate code (syntax, security, lint)
-    6. SafeWriter: Plan safe file modifications
+    4. Alignment: Semantic plan-vs-request check (medium/complex only)
+    5. Implementer: Generate code with LLM (re-reads plan.md)
+    6. Test Generator: Auto-generate tests from plan criteria
+    7. Reviewer: Validate code (syntax, security, lint)
+    8. SafeWriter: Plan safe file modifications
+    9. Feedback: Collect pipeline run data for improvement
     
     If Reviewer fails, feed errors back to Implementer and retry.
     Plan.md is re-read from disk on every retry (Manus technique).
@@ -105,10 +111,15 @@ class Orchestrator:
         
         # Initialize agents
         self.planner = PlannerAgent(llm_client)
+        self.alignment = AlignmentAgent(llm_client)
         self.historian = HistorianAgent()
         self.architect = ArchitectAgent()
         self.implementer = ImplementerAgent(llm_client)
+        self.test_generator = TestGeneratorAgent(llm_client)
         self.reviewer = ReviewerAgent()
+        
+        # Utilities
+        self.feedback = FeedbackCollector()
         
         # PR Search
         self.pr_searcher = PRSearcher()
@@ -258,7 +269,28 @@ class Orchestrator:
             extra={"agent": "planner"},
         )
         
-        # Step 4: Generate and validate code (with retry loop)
+        # ── ALIGNMENT PHASE (medium/complex only) ────────────────
+        if complexity in ("medium", "complex"):
+            self.logger.info(
+                "Running Alignment check",
+                extra={"agent": "orchestrator", "step": "alignment"},
+            )
+            context.prior_context["complexity"] = complexity
+            with timed_operation(self.logger, "alignment"):
+                align_response = await self.alignment.process(context)
+            
+            if align_response.success and not align_response.data.get("aligned", True):
+                concerns = align_response.data.get("concerns", [])
+                self.logger.warning(
+                    f"Alignment failed: {concerns}",
+                    extra={"agent": "alignment"},
+                )
+                # Feed concerns back to Implementer as extra context
+                context.prior_context["alignment_concerns"] = concerns
+            
+            result.agent_summaries["alignment"] = align_response.summary
+        
+        # ── IMPLEMENTATION + REVIEW LOOP ──────────────────────────
         max_retries = self.config.max_retries
         
         for attempt in range(1, max_retries + 1):
@@ -334,12 +366,35 @@ class Orchestrator:
                         extra={"step": "retry"},
                     )
         
-        # Step 5: Plan safe changes
+        # ── TEST GENERATION PHASE ────────────────────────────────
+        if result.generated_code:
+            self.logger.info(
+                "Running Test Generator",
+                extra={"agent": "orchestrator", "step": "test_generator"},
+            )
+            context.prior_context["implementer"] = {
+                "code": result.generated_code,
+                "file_path": result.target_file,
+            }
+            with timed_operation(self.logger, "test_generator"):
+                test_response = await self.test_generator.process(context)
+            
+            if test_response.success and test_response.data.get("test_code"):
+                result.agent_summaries["test_generator"] = test_response.summary
+                test_code = test_response.data["test_code"]
+                test_file = test_response.data["test_file_path"]
+                generated_files = {result.target_file: result.generated_code}
+                if test_code and test_file:
+                    generated_files[test_file] = test_code
+            else:
+                generated_files = {result.target_file: result.generated_code}
+        
+        # ── SAFE WRITER PHASE ─────────────────────────────────────
         if result.generated_code:
             with timed_operation(self.logger, "safe_writer"):
                 safe_writer = SafeCodeWriter(repo_path)
                 changeset = safe_writer.plan_changes(
-                    generated_files={result.target_file: result.generated_code},
+                    generated_files=generated_files,
                     language=language,
                 )
             result.changeset = changeset
@@ -365,6 +420,20 @@ class Orchestrator:
             f"in {metrics.total_duration_ms:.0f}ms",
             extra={"step": "complete"},
         )
+        
+        # ── FEEDBACK COLLECTION ───────────────────────────────────
+        try:
+            feedback_entry = self.feedback.collect(result)
+            feedback_path = os.path.join(
+                workspace.workspace_dir, "feedback.jsonl"
+            )
+            self.feedback.save(feedback_entry, feedback_path)
+            self.logger.debug(
+                "Feedback saved",
+                extra={"step": "feedback"},
+            )
+        except Exception as e:
+            self.logger.debug(f"Feedback collection skipped: {e}")
         
         return result
     

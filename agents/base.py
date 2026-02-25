@@ -14,11 +14,13 @@ import json
 
 class AgentRole(Enum):
     """Roles in the agent swarm."""
-    PLANNER = "planner"          # Pre-generation planning
-    HISTORIAN = "historian"      # Analyzes PR history and patterns
-    ARCHITECT = "architect"      # Maps codebase structure
-    IMPLEMENTER = "implementer"  # Generates code
-    REVIEWER = "reviewer"        # Security and compliance
+    PLANNER = "planner"              # Pre-generation planning
+    ALIGNMENT = "alignment"          # Semantic plan-vs-request check
+    HISTORIAN = "historian"          # Analyzes PR history and patterns
+    ARCHITECT = "architect"          # Maps codebase structure
+    IMPLEMENTER = "implementer"     # Generates code
+    TEST_GENERATOR = "test_generator"  # Auto-generates tests
+    REVIEWER = "reviewer"            # Security and compliance
 
 
 @dataclass

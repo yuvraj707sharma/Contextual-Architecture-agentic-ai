@@ -3,15 +3,18 @@ Contextual Architect — Multi-Agent Code Generation System.
 
 Agents:
   - PlannerAgent: Pre-generation planning and complexity scoring
+  - AlignmentAgent: Semantic plan-vs-request validation
   - HistorianAgent: Mines patterns and conventions from a codebase
   - ArchitectAgent: Maps project structure and finds utilities
   - ImplementerAgent: Generates code using LLM with full context
+  - TestGeneratorAgent: Auto-generates tests from plan criteria
   - ReviewerAgent: Validates code (syntax, security, lint)
   - StyleAnalyzer: Fingerprints a project's exact coding style
 
 Infrastructure:
   - Orchestrator: Chains agents with rejection loop
   - SafeCodeWriter: Permission-based file writing
+  - FeedbackCollector: Post-run data collection
   - AgentConfig: Central configuration
   - create_llm_client: Multi-provider LLM factory
 
@@ -28,14 +31,17 @@ Usage:
 
 from .base import BaseAgent, AgentContext, AgentResponse, AgentRole
 from .planner import PlannerAgent, PlannerOutput
+from .alignment import AlignmentAgent, AlignmentOutput
 from .historian import HistorianAgent
 from .architect import ArchitectAgent
 from .implementer import ImplementerAgent
+from .test_generator import TestGeneratorAgent, TestGeneratorOutput
 from .reviewer import ReviewerAgent, ValidationResult, validate_code
 from .style_fingerprint import StyleAnalyzer, StyleFingerprint
 from .pr_search import PRSearcher, PRSummary
 from .orchestrator import Orchestrator, OrchestrationResult
 from .safe_writer import SafeCodeWriter, ChangeSet, ProposedChange
+from .feedback import FeedbackCollector, FeedbackEntry
 from .llm_client import (
     BaseLLMClient,
     DeepSeekClient,
@@ -53,9 +59,11 @@ __all__ = [
     # Agents
     "BaseAgent",
     "PlannerAgent",
+    "AlignmentAgent",
     "HistorianAgent",
     "ArchitectAgent",
     "ImplementerAgent",
+    "TestGeneratorAgent",
     "ReviewerAgent",
     "StyleAnalyzer",
     # Orchestration
@@ -66,7 +74,9 @@ __all__ = [
     "AgentResponse",
     "AgentRole",
     "PlannerOutput",
+    "AlignmentOutput",
     "ValidationResult",
+    "TestGeneratorOutput",
     "StyleFingerprint",
     "PRSearcher",
     "PRSummary",
@@ -87,4 +97,7 @@ __all__ = [
     "get_logger",
     "PipelineMetrics",
     "validate_code",
+    # Feedback
+    "FeedbackCollector",
+    "FeedbackEntry",
 ]
