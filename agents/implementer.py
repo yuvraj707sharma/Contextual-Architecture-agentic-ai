@@ -62,35 +62,12 @@ class ImplementerAgent(BaseAgent):
     5. Calls LLM and extracts code
     """
     
-    SYSTEM_PROMPT = """You are the Implementer Agent, a precise code generator.
-
-Your job is to generate production-ready code that:
-1. EXACTLY matches the project's coding style
-2. Follows detected conventions
-3. Avoids known mistakes
-4. Reuses existing utilities
-5. Is placed in the correct location
-
-CRITICAL RULES:
-- Do NOT refactor existing code unless explicitly asked
-- Do NOT add features beyond what was requested
-- Do NOT change naming conventions
-- Match the EXACT style of the existing codebase
-- Keep changes MINIMAL and FOCUSED
-
-Output Format:
-Return code wrapped in triple backticks with the language specified:
-
-```python
-# Your generated code here
-```
-
-If multiple files need to be created, separate them with:
---- FILE: path/to/file.py ---
-```python
-# File contents
-```
-"""
+    SYSTEM_PROMPT = None  # Loaded from system_prompts module
+    
+    @classmethod
+    def _load_prompt(cls) -> str:
+        from .system_prompts import IMPLEMENTER_SYSTEM_PROMPT
+        return IMPLEMENTER_SYSTEM_PROMPT
     
     def __init__(self, llm_client: Optional[BaseLLMClient] = None):
         super().__init__(llm_client)
@@ -101,7 +78,7 @@ If multiple files need to be created, separate them with:
     
     @property
     def system_prompt(self) -> str:
-        return self.SYSTEM_PROMPT
+        return self._load_prompt()
     
     async def process(self, context: AgentContext) -> AgentResponse:
         """
@@ -134,7 +111,7 @@ If multiple files need to be created, separate them with:
         
         # Call LLM
         response = await self.llm_client.generate(
-            system_prompt=self.SYSTEM_PROMPT,
+            system_prompt=self.system_prompt,
             user_prompt=prompt,
             temperature=0.1,  # Low temp for deterministic code
             max_tokens=4096,

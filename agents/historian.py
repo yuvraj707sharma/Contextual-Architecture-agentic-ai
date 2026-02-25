@@ -122,47 +122,12 @@ class HistorianAgent(BaseAgent):
     pass review on the first attempt.
     """
     
-    SYSTEM_PROMPT = """You are the Historian Agent, a code archaeologist who understands 
-project evolution through its Git and PR history.
-
-Your job is to:
-1. Find PRs related to the current task
-2. Extract the "correction logic" (what was rejected and why)
-3. Identify company-specific patterns (logging, error handling, etc.)
-4. Summarize patterns the Implementer should follow
-
-When analyzing PRs, focus on:
-- Review comments that mention conventions ("we usually...", "our pattern is...")
-- Rejected code and why it was rejected
-- Common imports and utilities used
-- File organization patterns
-
-Output Format:
-Return a JSON object with:
-{
-    "patterns": [
-        {
-            "pattern_type": "error_handling|logging|testing|architecture|style",
-            "description": "What the pattern is",
-            "example_code": "Code example",
-            "source": "PR #123 or file path",
-            "confidence": 0-100
-        }
-    ],
-    "conventions": {
-        "naming": "camelCase for functions",
-        "imports": "Group by stdlib, then third-party, then internal",
-        "error_handling": "Always wrap errors with context"
-    },
-    "relevant_prs": [
-        {"number": 123, "title": "Add auth middleware", "relevance": "Similar feature"}
-    ],
-    "common_mistakes": [
-        "Don't use global state for configuration",
-        "Always use the internal logger, not fmt.Println"
-    ]
-}
-"""
+    SYSTEM_PROMPT = None  # Loaded dynamically from system_prompts module
+    
+    @classmethod
+    def _load_prompt(cls, complexity: str = "moderate") -> str:
+        from .system_prompts import get_historian_prompt
+        return get_historian_prompt(complexity)
     
     def __init__(self, llm_client=None, github_client=None):
         """
@@ -184,7 +149,7 @@ Return a JSON object with:
     
     @property
     def system_prompt(self) -> str:
-        return self.SYSTEM_PROMPT
+        return self._load_prompt()
     
     async def process(self, context: AgentContext) -> AgentResponse:
         """

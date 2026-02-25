@@ -124,19 +124,12 @@ class ReviewerAgent(BaseAgent):
     - Import validation
     """
     
-    SYSTEM_PROMPT = """You are the Reviewer Agent, a code quality guardian.
-
-Your job is to validate generated code before it's shown to the user.
-You check for:
-1. Syntax errors
-2. Type errors
-3. Linting issues
-4. Security vulnerabilities
-5. Import problems
-
-You are the LAST barrier before code reaches the user. Be thorough but practical.
-Only fail for real issues, not style preferences.
-"""
+    SYSTEM_PROMPT = None  # Loaded from system_prompts module
+    
+    @classmethod
+    def _load_prompt(cls) -> str:
+        from .system_prompts import REVIEWER_SYSTEM_PROMPT
+        return REVIEWER_SYSTEM_PROMPT
     
     # Security patterns to flag
     SECURITY_PATTERNS = {
@@ -195,7 +188,7 @@ Only fail for real issues, not style preferences.
     
     @property
     def system_prompt(self) -> str:
-        return self.SYSTEM_PROMPT
+        return self._load_prompt()
     
     async def process(self, context: AgentContext) -> AgentResponse:
         """

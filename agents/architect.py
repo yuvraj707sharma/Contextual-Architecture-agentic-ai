@@ -137,34 +137,12 @@ class ArchitectAgent(BaseAgent):
     - Dependency mapping
     """
     
-    SYSTEM_PROMPT = """You are the Architect Agent, a codebase navigator who understands 
-project structure and can recommend where new code belongs.
-
-Your job is to:
-1. Map the project's directory structure
-2. Identify existing utilities the Implementer can reuse
-3. Determine where new code should be placed
-4. List imports the new code will need
-
-Focus on:
-- Package/module organization
-- Existing helper functions and utilities
-- Configuration and constants files
-- Test file locations
-
-Output Format:
-Return a JSON object with:
-{
-    "target_file": "/path/to/new/file.go",
-    "target_package": "internal/auth",
-    "existing_utilities": [
-        {"name": "ValidateToken", "file": "pkg/jwt/validate.go", "description": "JWT validation"}
-    ],
-    "imports_needed": ["pkg/jwt", "internal/config"],
-    "related_files": ["internal/middleware/auth.go"],
-    "structure": {"internal/": ["auth/", "config/", "middleware/"]}
-}
-"""
+    SYSTEM_PROMPT = None  # Loaded from system_prompts module
+    
+    @classmethod
+    def _load_prompt(cls) -> str:
+        from .system_prompts import ARCHITECT_SYSTEM_PROMPT
+        return ARCHITECT_SYSTEM_PROMPT
     
     # File extensions for each language
     LANG_EXTENSIONS = {
@@ -189,7 +167,7 @@ Return a JSON object with:
     
     @property
     def system_prompt(self) -> str:
-        return self.SYSTEM_PROMPT
+        return self._load_prompt()
     
     async def process(self, context: AgentContext) -> AgentResponse:
         """
