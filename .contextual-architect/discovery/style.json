@@ -1,0 +1,15 @@
+{
+  "function_naming": "snake_case",
+  "variable_naming": "snake_case",
+  "class_naming": "PascalCase",
+  "indent_style": "spaces",
+  "indent_size": 4,
+  "max_line_length": 115,
+  "import_style": "grouped",
+  "error_style": "raise",
+  "wraps_errors": false,
+  "logger_library": "print",
+  "log_format": "printf",
+  "test_framework": "pytest",
+  "test_naming": "test_"
+}

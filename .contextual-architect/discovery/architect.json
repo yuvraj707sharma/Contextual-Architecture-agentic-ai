@@ -1,0 +1,42 @@
+{
+  "target_file": "feature.py",
+  "target_package": "",
+  "existing_utilities": [],
+  "imports_needed": [],
+  "structure": {
+    "agents": [
+      "alignment.py",
+      "architect.py",
+      "base.py",
+      "config.py",
+      "context_budget.py",
+      "feedback.py",
+      "historian.py",
+      "implementer.py",
+      "llm_client.py",
+      "logger.py",
+      "orchestrator.py",
+      "output_validator.py",
+      "planner.py",
+      "pr_search.py",
+      "README.md",
+      "reviewer.py",
+      "safe_writer.py",
+      "style_fingerprint.py",
+      "system_prompts.py",
+      "tests/"
+    ],
+    "data_pipeline": [
+      "README.md",
+      "requirements-dev.txt",
+      "requirements.txt",
+      "src/",
+      "tests/",
+      "venv/"
+    ]
+  },
+  "related_files": [],
+  "config_files": [
+    "pyproject.toml"
+  ]
+}

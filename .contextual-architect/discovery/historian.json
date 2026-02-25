@@ -1,0 +1,45 @@
+{
+  "patterns": [
+    {
+      "source": "test_generator.py",
+      "pattern_type": "testing",
+      "description": "pytest-style tests (found 1 occurrences)",
+      "example_code": "lines.append(\"def test_placeholder():\")\n            lines.append('    \"\"\"Placeholder test \u2014 no criteria provided.\"\"\"')",
+      "confidence": 85
+    },
+    {
+      "source": "alignment.py",
+      "pattern_type": "logging",
+      "description": "Standard logging module (found 1 occurrences)",
+      "example_code": "logger.warning(f\"LLM alignment check failed, falling back: {e}\")\n            return self._check_heuristic(context, plan)",
+      "confidence": 80
+    },
+    {
+      "source": "base.py",
+      "pattern_type": "architecture",
+      "description": "Abstract base classes (found 4 occurrences)",
+      "example_code": "from abc import ABC, abstractmethod\nfrom dataclasses import dataclass, field",
+      "confidence": 75
+    },
+    {
+      "source": "reviewer.py",
+      "pattern_type": "error_handling",
+      "description": "Typed exception handling (found 1 occurrences)",
+      "example_code": "except SyntaxError as e:\n            issues.append(ValidationIssue(",
+      "confidence": 70
+    }
+  ],
+  "conventions": {
+    "project_layout": "Custom layout (agents, data_pipeline)",
+    "logging": "structlog",
+    "testing": "pytest",
+    "imports": "standard"
+  },
+  "relevant_prs": [],
+  "related_files": [],
+  "common_mistakes": [
+    "Don't use mutable default arguments (list, dict)",
+    "Don't use bare except: clauses",
+    "Don't use global state for configuration"
+  ]
+}
