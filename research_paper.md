@@ -2,7 +2,8 @@
 
 **Yuvraj Sharma**
 Department of Computer Science and Engineering
-B.Tech 2nd Year
+[Your University Name], [City, State, India]
+Email: [your.email@university.edu]
 
 ---
 
@@ -30,7 +31,7 @@ We present **Contextual Architect**, a system designed to close the Integration 
 
 3. **Constraint-based security enforcement**: A post-generation Reviewer agent checks generated code against a CWE denylist (CWE-89, CWE-502, CWE-78) and validates structural compliance. This provides runtime guarantees that training-time safety cannot.
 
-Our primary claim is that the combination of multi-agent orchestration and repository-specific RAG produces measurably more compliant code than single-shot LLM generation. We support this claim with a controlled before/after evaluation on a FastAPI benchmark, showing that RAG eliminates a CWE-89 false positive, improves file naming accuracy, and reduces total pipeline time by 59.5%.
+Our primary claim is that the combination of multi-agent orchestration and repository-specific RAG produces measurably more compliant code than single-shot LLM generation. We support this claim with a controlled before/after evaluation on a FastAPI benchmark, showing that RAG eliminates a CWE-89 false positive, improves file naming accuracy, and reduces total pipeline time by 51.6%.
 
 ---
 
@@ -43,6 +44,10 @@ The application of multi-agent LLM systems to software engineering has gained si
 **MetaGPT** [5] advances the paradigm by encoding Standardized Operating Procedures (SOPs) into agent workflows, reducing cascading hallucinations through intermediate verification. MetaGPT's assembly-line approach, where each agent verifies its predecessor's output, directly influenced our pipeline design. However, MetaGPT focuses on complete application generation rather than targeted code modifications to existing repositories.
 
 **MACOG** (Multi-Agent Code-Orchestrated Generation) [6] applies multi-agent orchestration to Infrastructure-as-Code (IaC) generation, with agents including Architect, Engineer, Reviewer, and Security Prover coordinated via a shared-blackboard orchestrator. MACOG demonstrates that multi-agent approaches improve IaC correctness from 54.90 to 74.02 on the IaC-Eval benchmark. Our work shares MACOG's philosophy of specialized agents with security verification, but targets general-purpose code generation within existing repositories rather than infrastructure configuration.
+
+**SWE-agent** [12] introduces agent-computer interfaces that enable automated software engineering on existing repositories. Using a single agent operating through a custom shell interface, SWE-agent resolves 12.5% of issues on the SWE-bench benchmark. While SWE-agent demonstrates the value of repository-grounded code generation, it uses a single-agent architecture without explicit security enforcement or retrieval-augmented context.
+
+**AutoCodeRover** [13] uses program structure-aware search to autonomously resolve GitHub issues, achieving 30.67% on SWE-bench-lite. AutoCodeRover leverages AST-based code search to navigate repositories, which is conceptually similar to our AST-aware chunking. However, it operates as a single agent and does not incorporate multi-agent orchestration, CWE enforcement, or RAG-based pattern retrieval.
 
 ### B. Code Security in LLM Generation
 
@@ -62,16 +67,16 @@ Our RAG approach differs from prior work in its use of **AST-aware chunking** at
 
 Table I summarizes the key differences between our system and related work.
 
-| Feature | ChatDev | MetaGPT | MACOG | Ours |
-|---------|---------|---------|-------|------|
-| Multi-agent pipeline | Yes | Yes | Yes | Yes |
-| Targets existing repos | No | No | No | **Yes** |
-| Repository-grounded RAG | No | No | No | **Yes** |
-| AST-aware chunking | No | No | No | **Yes** |
-| CWE denylist enforcement | No | No | OPA-based | **CWE-specific** |
-| Incremental indexing | N/A | N/A | N/A | **Yes** |
-| Quantified before/after eval | No | Yes | Yes | **Yes** |
-| Graceful degradation | No | No | No | **Yes** |
+| Feature | ChatDev | MetaGPT | MACOG | SWE-agent | AutoCodeRover | Ours |
+|---------|---------|---------|-------|-----------|---------------|------|
+| Multi-agent pipeline | Yes | Yes | Yes | No | No | **Yes** |
+| Targets existing repos | No | No | No | **Yes** | **Yes** | **Yes** |
+| Repository-grounded RAG | No | No | No | No | AST search | **Yes** |
+| AST-aware chunking | No | No | No | No | No | **Yes** |
+| CWE denylist enforcement | No | No | OPA-based | No | No | **CWE-specific** |
+| Incremental indexing | N/A | N/A | N/A | N/A | N/A | **Yes** |
+| Quantified before/after eval | No | Yes | Yes | Yes | Yes | **Yes** |
+| Graceful degradation | No | No | No | No | No | **Yes** |
 
 *Table I: Feature comparison with related multi-agent code generation systems.*
 
@@ -307,6 +312,14 @@ Table IV summarizes our automated test infrastructure.
 
 *Table IV: Automated test suite composition.*
 
+### E. Threats to Validity
+
+*Internal validity.* Our before/after comparison controls for the LLM (same model, same temperature) and the benchmark (same repository, same tasks). However, LLM inference is non-deterministic; results may vary across runs. We mitigate this by using temperature=0 and reporting single-run results, noting that stochastic variation is inherent to the approach.
+
+*External validity.* Our evaluation uses a single FastAPI repository (44 files) with three tasks. Generalization to other frameworks (Django, Express, Spring), languages (Java, Rust, C++), and repository scales (>1000 files) requires further evaluation. We explicitly do not claim broad generalizability from this initial study.
+
+*Construct validity.* Our 32 constraint checks are a proxy for "code review readiness," not a replacement for actual human code review. The correlation between constraint compliance and human reviewer acceptance is assumed but not empirically validated.
+
 ---
 
 ## VII. Discussion
@@ -361,17 +374,21 @@ Our evaluation demonstrates that repository-specific retrieval eliminates securi
 
 [5] S. Hong et al., "MetaGPT: Meta Programming for A Multi-Agent Collaborative Framework," in *ICLR*, 2024. arXiv:2308.00352.
 
-[6] "Multi-Agent Code-Orchestrated Generation for Reliable Infrastructure-as-Code (MACOG)," arXiv:2510.03902, 2025.
+[6] R. N. H. Khan, D. Wasif, J.-H. Cho, and A. Butt, "Multi-Agent Code-Orchestrated Generation for Reliable Infrastructure-as-Code (MACOG)," arXiv:2510.03902, 2025.
 
-[7] "OctoBench: Benchmarking Scaffold-Aware Instruction Following in Repository-Grounded Agentic Coding," arXiv:2601.10343, 2026.
+[7] D. Ding, S. Liu, E. Yang, J. Lin, Z. Chen, S. Dou, T. Gui et al., "OctoBench: Benchmarking Scaffold-Aware Instruction Following in Repository-Grounded Agentic Coding," arXiv:2601.10343, 2026.
 
 [8] C. Pornprasit et al., "Retrieval-Augmented Code Review Comment Generation," arXiv:2506.11591, 2025.
 
 [9] L. Gong et al., "Evaluation of LLMs on Syntax-Aware Code Fill-in-the-Middle Tasks," arXiv:2403.04814, 2024.
 
-[10] "Manus AI — Context Engineering and Filesystem-as-Memory," https://manus.im, 2025.
+[10] "Context Engineering for AI Agents," Anthropic Research Blog, 2025. See also Manus AI filesystem-as-memory technique, https://manus.im.
 
 [11] "Tree-sitter — An incremental parsing system for programming tools," https://tree-sitter.github.io, 2024.
+
+[12] J. Yang, C. E. Jimenez, A. Wettig, K. Lieret, S. Yao, K. Narasimhan, and O. Press, "SWE-agent: Agent-Computer Interfaces Enable Automated Software Engineering," arXiv:2405.15793, 2024.
+
+[13] Y. Zhang, H. Ruan, Z. Fan, and A. Roychoudhury, "AutoCodeRover: Autonomous Program Improvement," arXiv:2404.05427, 2024.
 
 ---
 
