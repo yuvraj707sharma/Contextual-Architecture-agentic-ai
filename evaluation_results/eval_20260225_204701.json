@@ -1,0 +1,26 @@
+{
+  "timestamp": "20260225_204701",
+  "results": [
+    {
+      "task_id": "simple-health-check",
+      "success": false,
+      "pipeline_status": "llm_init_error",
+      "total_time_ms": 0,
+      "attempts": 0,
+      "generated_code": "",
+      "target_file": "",
+      "agent_telemetry": [],
+      "constraint_checks": [],
+      "errors": [
+        "Failed to create LLM client: GROQ_API_KEY not found"
+      ],
+      "agent_summaries": {},
+      "notes": "Provider: groq"
+    }
+  ],
+  "summary": {
+    "total_tasks": 1,
+    "passed_tasks": 0,
+    "total_time_ms": 0
+  }
+}

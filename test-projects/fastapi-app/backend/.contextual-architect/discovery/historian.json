@@ -1,0 +1,16 @@
+{
+  "patterns": [],
+  "conventions": {
+    "project_layout": "Custom layout ()",
+    "logging": "unknown",
+    "testing": "unknown",
+    "imports": "standard"
+  },
+  "relevant_prs": [],
+  "related_files": [],
+  "common_mistakes": [
+    "Don't use mutable default arguments (list, dict)",
+    "Don't use bare except: clauses",
+    "Don't use global state for configuration"
+  ]
+}

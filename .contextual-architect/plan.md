@@ -16,7 +16,7 @@
 - Use snake_case naming convention
 - Use print for logging
 - project_layout: Custom layout (agents, data_pipeline)
-- logging: structlog
+- logging: standard logging
 - testing: pytest
 
 ## Do NOT

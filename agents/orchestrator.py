@@ -113,14 +113,14 @@ class Orchestrator:
             fmt=self.config.log_format,
         )
         
-        # Initialize agents
+        # Initialize agents — ALL receive LLM client
         self.planner = PlannerAgent(llm_client)
         self.alignment = AlignmentAgent(llm_client)
-        self.historian = HistorianAgent()
-        self.architect = ArchitectAgent()
+        self.historian = HistorianAgent(llm_client)
+        self.architect = ArchitectAgent(llm_client)
         self.implementer = ImplementerAgent(llm_client)
         self.test_generator = TestGeneratorAgent(llm_client)
-        self.reviewer = ReviewerAgent()
+        self.reviewer = ReviewerAgent(llm_client)
         
         # Utilities
         self.feedback = FeedbackCollector()

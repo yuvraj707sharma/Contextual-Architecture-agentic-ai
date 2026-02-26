@@ -8,9 +8,11 @@
       "alignment.py",
       "architect.py",
       "base.py",
+      "clarification_handler.py",
       "config.py",
       "context_budget.py",
       "feedback.py",
+      "feedback_reader.py",
       "historian.py",
       "implementer.py",
       "llm_client.py",
@@ -22,9 +24,7 @@
       "README.md",
       "reviewer.py",
       "safe_writer.py",
-      "style_fingerprint.py",
-      "system_prompts.py",
-      "tests/"
+      "style_fingerprint.py"
     ],
     "data_pipeline": [
       "README.md",

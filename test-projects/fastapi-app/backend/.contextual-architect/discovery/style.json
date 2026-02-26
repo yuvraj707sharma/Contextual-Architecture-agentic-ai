@@ -1,0 +1,15 @@
+{
+  "function_naming": "unknown",
+  "variable_naming": "unknown",
+  "class_naming": "unknown",
+  "indent_style": "spaces",
+  "indent_size": 4,
+  "max_line_length": 100,
+  "import_style": "grouped",
+  "error_style": "return",
+  "wraps_errors": true,
+  "logger_library": "unknown",
+  "log_format": "structured",
+  "test_framework": "unknown",
+  "test_naming": "test_"
+}

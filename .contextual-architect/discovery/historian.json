@@ -1,13 +1,6 @@
 {
   "patterns": [
     {
-      "source": "test_generator.py",
-      "pattern_type": "testing",
-      "description": "pytest-style tests (found 1 occurrences)",
-      "example_code": "lines.append(\"def test_placeholder():\")\n            lines.append('    \"\"\"Placeholder test \u2014 no criteria provided.\"\"\"')",
-      "confidence": 85
-    },
-    {
       "source": "alignment.py",
       "pattern_type": "logging",
       "description": "Standard logging module (found 1 occurrences)",
@@ -31,7 +24,7 @@
   ],
   "conventions": {
     "project_layout": "Custom layout (agents, data_pipeline)",
-    "logging": "structlog",
+    "logging": "standard logging",
     "testing": "pytest",
     "imports": "standard"
   },
