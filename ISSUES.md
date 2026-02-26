@@ -1,140 +1,124 @@
-# GitHub Issues for Contextual Architect
+# Issues & Roadmap — Contextual Architect
 
-This document tracks the key issues to create in the GitHub repository.
-Create these as actual GitHub issues when ready.
+## Completed ✅
+
+### Phase 1: Data Collection
+- [x] **CodeReviewer dataset integration** — Downloader + JSONL converter
+- [x] **Custom PR extractor** — GitHub API scraper with quality scoring
+
+### Phase 3: Multi-Agent Architecture (Core)
+- [x] **Agent orchestration protocol** — Input/output schemas, context handoff, retry loop
+- [x] **Historian Agent** — Convention detection, anti-pattern warnings, heuristic + LLM modes
+- [x] **Architect Agent** — Directory mapping, utility discovery, file placement
+- [x] **Planner Agent** — Structured plan generation with acceptance criteria
+- [x] **Alignment Agent** — Validates plan against user intent
+- [x] **Implementer Agent** — Full-context code generation
+- [x] **Reviewer Agent** — Syntax, security (CWE denylist), linting, external tools
+- [x] **Test Generator Agent** — Unit test creation from acceptance criteria
+- [x] **Orchestrator** — Parallel discovery + sequential generation + retry loop
+- [x] **Style Fingerprint** — Naming, indentation, logging, error handling extraction
+- [x] **Safe Code Writer** — Permission-based file modification with backups
+- [x] **Workspace** — Filesystem-as-memory (Manus technique)
+- [x] **LLM Client** — 7 providers (Groq, Gemini, DeepSeek, OpenAI, Anthropic, Ollama, Mock)
+- [x] **System Prompts** — 8 constraint-based prompts (CoAT, CWE denylist, 3-layer review)
+- [x] **Clarification Handler** — Ambiguity resolution from Architect signals
+- [x] **Feedback Reader** — Historical feedback loop (closes learning cycle)
+
+### Phase 5: Testing & Validation
+- [x] **245 unit tests** — All passing
+- [x] **25 E2E contract tests** — All passing
+- [x] **Evaluation harness** — Real-LLM testing with automated constraint checks
+- [x] **Evaluation results** — 3/3 tasks, 31/32 constraints (96.9%) on Groq llama-3.3-70b
 
 ---
 
-## Phase 1: Data Collection
+## Open — Priority 1 (Immediate)
 
-### Issue 1: Download and convert CodeReviewer dataset
-**Labels**: `phase-1`, `data`, `priority-high`
+### Issue: RAG Layer for Repo-Specific Context
+**Labels**: `priority-critical`, `architecture`
 
-**Description**:
-Download Microsoft's CodeReviewer dataset from Zenodo and convert to our JSONL format.
+Add vector store (Qdrant or ChromaDB) so agents can semantically search repo-specific PR history, conventions, and past reviews. This is the **patent differentiator**.
 
 **Tasks**:
-- [ ] Run `python -m src.codereviewer --output data/codereviewer/`
-- [ ] Validate output format matches our schema
-- [ ] Filter for target languages (Go, Python, TypeScript)
-- [ ] Document sample count and quality stats
-
-**Links**:
-- Paper: https://arxiv.org/abs/2203.09095
-- Dataset: https://zenodo.org/record/6900648
+- [ ] Choose vector DB (Qdrant vs ChromaDB)
+- [ ] Embed repo files + PR data using sentence-transformers
+- [ ] Wire into Historian agent for semantic pattern search
+- [ ] Wire into Planner for "similar past tasks" retrieval
 
 ---
 
-### Issue 2: Extract supplementary data from gold-standard repos
-**Labels**: `phase-1`, `data`, `priority-medium`
+### Issue: Fix Architect file naming
+**Labels**: `bug`, `priority-high`
 
-**Description**:
-Use our custom extractor on 3-5 high-quality repos for supplementary training data.
-
-**Tasks**:
-- [ ] gofiber/fiber (Go patterns)
-- [ ] fastapi/fastapi (Python patterns)
-- [ ] vercel/next.js (TypeScript patterns)
-- [ ] Merge with CodeReviewer data
+Architect always targets `feature.py` regardless of task. Should suggest descriptive names (e.g., `health.py`, `users.py`).
 
 ---
 
-## Phase 2: Training
+### Issue: Fix CWE-89 false positive
+**Labels**: `bug`, `priority-medium`
 
-### Issue 3: Set up training infrastructure
-**Labels**: `phase-2`, `training`, `priority-high`
-
-**Description**:
-Set up cloud GPU environment for fine-tuning.
-
-**Tasks**:
-- [ ] Choose provider (RunPod vs Colab Pro+ vs Lambda)
-- [ ] Install transformers, peft, bitsandbytes
-- [ ] Test with small model first (7B)
+Evaluation harness CWE-89 regex flags f-string error messages as SQL injection. Need to refine pattern to only match actual SQL queries.
 
 ---
 
-## Phase 3: Multi-Agent Architecture ⭐ CORE
+## Open — Priority 2 (Short-term)
 
-### Issue 4: Design agent orchestration protocol
-**Labels**: `phase-3`, `architecture`, `priority-critical`
+### Issue: MCP Integration
+**Labels**: `priority-high`, `mcp`
 
-**Description**:
-Define how agents communicate and share context.
+Connect agents to live environment via MCP servers.
 
-**Tasks**:
-- [ ] Define agent input/output schemas
-- [ ] Design context handoff protocol
-- [ ] Define rejection loop behavior
+- [ ] `filesystem-mcp`: read_file, list_directory, write_file
+- [ ] `github-mcp`: search_prs, get_pr_diff, get_file
+- [ ] `terminal-mcp`: run_command, get_output
 
 ---
 
-### Issue 5: Build Historian Agent
-**Labels**: `phase-3`, `agent`, `priority-high`
+### Issue: Multi-file generation
+**Labels**: `enhancement`
 
-**Tasks**:
-- [ ] Implement PR history search via GitHub MCP
-- [ ] Pattern extraction from past reviews
-- [ ] Context summarization for Implementer
+Currently generates one file per task. Complex tasks (like refactoring) need coordinated multi-file output.
 
 ---
 
-### Issue 6: Build Architect Agent
-**Labels**: `phase-3`, `agent`, `priority-high`
+### Issue: VS Code Extension
+**Labels**: `enhancement`, `future`
 
-**Tasks**:
-- [ ] Directory structure mapping
-- [ ] Dependency graph analysis
-- [ ] "Where should this code go?" reasoning
+Package as VS Code extension for real developer workflow integration.
 
 ---
 
-### Issue 7: Build MCP servers (filesystem, github, terminal)
-**Labels**: `phase-3`, `mcp`, `priority-high`
+## Open — Priority 3 (Research)
 
-**Tasks**:
-- [ ] filesystem-mcp: read_file, list_directory, write_file
-- [ ] github-mcp: search_prs, get_pr_diff, get_file
-- [ ] terminal-mcp: run_command, get_output
+### Issue: Research Paper (IEEE)
+**Labels**: `research`, `patent`
 
----
-
-### Issue 8: Build Go orchestrator with parallel execution
-**Labels**: `phase-3`, `orchestrator`, `priority-high`
-
-**Tasks**:
-- [ ] Goroutine-based parallel agent runner
-- [ ] Context synthesis from multiple agents
-- [ ] Timeout and error handling
-
----
-
-## Phase 4: Security
-
-### Issue 9: Integrate security scanners
-**Labels**: `phase-4`, `security`
-
-**Tasks**:
-- [ ] gosec for Go
-- [ ] bandit for Python
-- [ ] eslint-plugin-security for JS/TS
-
----
-
-## Phase 6: Patent
-
-### Issue 10: Draft invention disclosure document
-**Labels**: `phase-6`, `patent`, `priority-high`
-
-**Description**:
 **Title**: Method and System for Multi-Agent Codebase-Aware Code Generation
 
 **Novel Claims**:
-1. Multi-agent swarm architecture for code generation
-2. Real-time codebase context injection via MCP
+1. Multi-agent swarm architecture for code generation with constraint prompts
+2. Real-time codebase context injection via filesystem scanning
 3. Architectural compliance validation using learned patterns
-4. Rejection loop for iterative refinement
+4. Rejection loop for iterative refinement with plan re-anchoring
 
 **NOT claiming** (prior art):
-- Training on PR data (Microsoft did this)
+- Training on PR data (Microsoft CodeReviewer)
 - Code review generation
+
+---
+
+## Open — Priority 4 (Future Scope)
+
+### Issue: Model Fine-Tuning
+**Labels**: `future`, `training`
+
+- [ ] LoRA fine-tuning on CodeReviewer dataset
+- [ ] Repo-specific fine-tuning pipeline
+- [ ] Evaluation vs base model (before/after comparison)
+
+### Issue: Security Scanner Integration
+**Labels**: `future`, `security`
+
+- [ ] bandit for Python
+- [ ] gosec for Go
+- [ ] eslint-plugin-security for JS/TS
