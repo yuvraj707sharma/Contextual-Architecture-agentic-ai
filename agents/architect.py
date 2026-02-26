@@ -370,27 +370,60 @@ class ArchitectAgent(BaseAgent):
                         return f"{dir_path}/{feature_name}{ext}", dir_path
         
         # Default: src/ or internal/ or root
+        feature_name = self._extract_feature_name(request_lower)
         if (repo_path / "internal").exists():
             ext = ".go" if language == "go" else ".py" if language == "python" else ".ts"
-            return f"internal/feature{ext}", "internal"
+            return f"internal/{feature_name}{ext}", "internal"
         if (repo_path / "src").exists():
             ext = ".py" if language == "python" else ".ts"
-            return f"src/feature{ext}", "src"
+            return f"src/{feature_name}{ext}", "src"
         
         ext = ".go" if language == "go" else ".py" if language == "python" else ".ts"
-        return f"feature{ext}", ""
+        return f"{feature_name}{ext}", ""
     
     def _extract_feature_name(self, request: str) -> str:
-        """Extract a feature name from the user request."""
-        # Simple heuristic: take first noun-like word
-        words = request.split()
-        skip = {"add", "create", "build", "implement", "make", "a", "an", "the", "for", "to", "with"}
+        """Extract a descriptive snake_case filename from the user request."""
+        request_clean = request.lower().strip()
         
-        for word in words:
-            if word.lower() not in skip and len(word) > 2:
-                return word.lower()
+        # Remove common prefixes
+        for prefix in ["add ", "create ", "build ", "implement ", "make ", "write ",
+                       "fix ", "refactor ", "update ", "modify "]:
+            if request_clean.startswith(prefix):
+                request_clean = request_clean[len(prefix):]
+                break
         
-        return "feature"
+        # Remove leading articles
+        for article in ["a ", "an ", "the "]:
+            if request_clean.startswith(article):
+                request_clean = request_clean[len(article):]
+                break
+        
+        # Take the first meaningful phrase (up to first period, comma, or 'that/which/it')
+        for stop in [". ", ", ", " that ", " which ", " it ", " so ", " and "]:
+            idx = request_clean.find(stop)
+            if idx > 0:
+                request_clean = request_clean[:idx]
+        
+        # Clean: keep only alphanumeric + spaces, collapse whitespace
+        cleaned = re.sub(r"[^a-z0-9 ]", " ", request_clean)
+        words = cleaned.split()
+        
+        # Filter out noise words
+        noise = {"in", "to", "for", "of", "on", "by", "is", "be", "use",
+                 "using", "with", "from", "into", "should", "must", "will",
+                 "the", "an", "its", "this", "that", "all", "each",
+                 "app", "project", "module", "file", "code", "new", "existing"}
+        words = [w for w in words if w not in noise and len(w) > 1]
+        
+        # Take up to 3 words for the filename
+        name_words = words[:3] if words else ["feature"]
+        name = "_".join(name_words)
+        
+        # Ensure valid Python identifier (no leading digits)
+        if name and name[0].isdigit():
+            name = f"mod_{name}"
+        
+        return name or "feature"
     
     def _determine_imports(
         self, 

@@ -1,0 +1,236 @@
+{
+  "timestamp": "20260226_143109",
+  "results": [
+    {
+      "task_id": "simple-health-check",
+      "success": true,
+      "pipeline_status": "approved",
+      "total_time_ms": 19297.774799999388,
+      "attempts": 1,
+      "generated_code": "# health_endpoint.py\nfrom fastapi import APIRouter\n\nrouter = APIRouter()\n\n@router.get(\"/health\")\ndef get_health() -> dict:\n    return {\"status\": \"ok\"}",
+      "target_file": "app/api/routes/health_endpoint.py",
+      "agent_telemetry": [],
+      "constraint_checks": [
+        {
+          "check_name": "CWE-502: No eval/exec",
+          "passed": true,
+          "details": "eval=clean, exec=clean"
+        },
+        {
+          "check_name": "CWE-89: No f-string SQL",
+          "passed": true,
+          "details": "clean"
+        },
+        {
+          "check_name": "No assert for validation",
+          "passed": true,
+          "details": "clean"
+        },
+        {
+          "check_name": "CWE-78: No OS command injection",
+          "passed": true,
+          "details": "os.system=clean, shell=True=clean"
+        },
+        {
+          "check_name": "No bare except:",
+          "passed": true,
+          "details": "clean"
+        },
+        {
+          "check_name": "Uses APIRouter pattern",
+          "passed": true,
+          "details": "APIRouter/router pattern found"
+        },
+        {
+          "check_name": "Returns JSON health response",
+          "passed": true,
+          "details": "JSON response pattern found"
+        },
+        {
+          "check_name": "Historian ran",
+          "passed": true,
+          "details": "Found 10 patterns. 4 conventions detected. 3 common mistakes to avoid"
+        },
+        {
+          "check_name": "Architect ran",
+          "passed": true,
+          "details": "Target: health_endpoint.py. 3 directories mapped"
+        },
+        {
+          "check_name": "Planner ran",
+          "passed": true,
+          "details": "Plan created: Create a /health endpoint that returns a JSON response indicating "
+        },
+        {
+          "check_name": "Reviewer ran",
+          "passed": true,
+          "details": "\u2705 Passed: 0 errors, 0 warnings"
+        }
+      ],
+      "errors": [],
+      "agent_summaries": {
+        "historian": "Found 10 patterns. 4 conventions detected. 3 common mistakes to avoid",
+        "architect": "Target: health_endpoint.py. 3 directories mapped",
+        "planner": "Plan created: Create a /health endpoint that returns a JSON response indicating the application's status. (medium complexity, 2 criteria, 2 target files)",
+        "alignment": "Aligned: 2 concerns, 2 suggestions",
+        "reviewer": "\u2705 Passed: 0 errors, 0 warnings",
+        "test_generator": "Generated 2 tests (pytest) \u2192 app/api/routes\\tests\\test_health_endpoint.py"
+      },
+      "notes": ""
+    },
+    {
+      "task_id": "security-input-validation",
+      "success": true,
+      "pipeline_status": "approved",
+      "total_time_ms": 10834.8661,
+      "attempts": 1,
+      "generated_code": "# input_validation_user.py\n\nimport re\nfrom typing import Optional\nfrom app.crud import create_user, get_user_by_email\nfrom app.schemas import UserCreate\nfrom fastapi import HTTPException\nimport logging\n\nlogger = logging.getLogger(__name__)\n\ndef validate_email_format(email: str) -> bool:\n    \"\"\"\n    Validate email format using a regular expression.\n    \"\"\"\n    email_regex = r\"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\\.[a-zA-Z0-9-.]+$\"\n    return bool(re.match(email_regex, email))\n\ndef validate_password_strength(password: str) -> bool:\n    \"\"\"\n    Validate password strength.\n    \"\"\"\n    # Password should be at least 8 characters long, contain at least one uppercase letter,\n    # one lowercase letter, one digit, and one special character.\n    password_regex = r\"^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*#?&])[A-Za-z\\d@$!%*#?&]{8,}$\"\n    return bool(re.match(password_regex, password))\n\ndef validate_user_input(user_in: UserCreate) -> None:\n    \"\"\"\n    Validate user input.\n    \"\"\"\n    if not validate_email_format(user_in.email):\n        raise HTTPException(\n            status_code=400,\n            detail=\"Invalid email format.\",\n        )\n\n    if not validate_password_strength(user_in.password):\n        raise HTTPException(\n            status_code=400,\n            detail=\"Password should be at least 8 characters long, contain at least one uppercase letter, \"\n                   \"one lowercase letter, one digit, and one special character.\",\n        )\n\n    existing_user = get_user_by_email(email=user_in.email)\n    if existing_user:\n        raise HTTPException(\n            status_code=400,\n            detail=\"The user with this email already exists in the system.\",\n        )\n\ndef create_user_with_validation(session: Session, user_in: UserCreate) -> Any:\n    \"\"\"\n    Create new user with input validation.\n    \"\"\"\n    validate_user_input(user_in)\n    return create_user(session=session, user_in=user_in)",
+      "target_file": "input_validation_user.py",
+      "agent_telemetry": [],
+      "constraint_checks": [
+        {
+          "check_name": "CWE-502: No eval/exec",
+          "passed": true,
+          "details": "eval=clean, exec=clean"
+        },
+        {
+          "check_name": "CWE-89: No f-string SQL",
+          "passed": true,
+          "details": "clean"
+        },
+        {
+          "check_name": "No assert for validation",
+          "passed": true,
+          "details": "clean"
+        },
+        {
+          "check_name": "CWE-78: No OS command injection",
+          "passed": true,
+          "details": "os.system=clean, shell=True=clean"
+        },
+        {
+          "check_name": "No bare except:",
+          "passed": true,
+          "details": "clean"
+        },
+        {
+          "check_name": "Uses input validation",
+          "passed": true,
+          "details": "Input validation found"
+        },
+        {
+          "check_name": "Uses HTTPException for errors",
+          "passed": true,
+          "details": "HTTPException found"
+        },
+        {
+          "check_name": "Historian ran",
+          "passed": true,
+          "details": "Found 10 patterns. 4 conventions detected. 3 common mistakes to avoid"
+        },
+        {
+          "check_name": "Architect ran",
+          "passed": true,
+          "details": "Target: input_validation_user.py. 3 utilities found. 1 imports needed. 3 directo"
+        },
+        {
+          "check_name": "Planner ran",
+          "passed": true,
+          "details": "Plan created: Implement input validation for the user creation endpoint in the u"
+        },
+        {
+          "check_name": "Reviewer ran",
+          "passed": true,
+          "details": "\u2705 Passed: 0 errors, 0 warnings"
+        }
+      ],
+      "errors": [],
+      "agent_summaries": {
+        "historian": "Found 10 patterns. 4 conventions detected. 3 common mistakes to avoid",
+        "architect": "Target: input_validation_user.py. 3 utilities found. 1 imports needed. 3 directories mapped",
+        "planner": "Plan created: Implement input validation for the user creation endpoint in the users.py file. (medium complexity, 3 criteria, 2 target files)",
+        "alignment": "Aligned: 2 concerns, 2 suggestions",
+        "reviewer": "\u2705 Passed: 0 errors, 0 warnings",
+        "test_generator": "Generated 6 tests (pytest) \u2192 tests\\test_input_validation_user.py"
+      },
+      "notes": ""
+    },
+    {
+      "task_id": "complex-refactor",
+      "success": true,
+      "pipeline_status": "approved",
+      "total_time_ms": 11409.035000000586,
+      "attempts": 1,
+      "generated_code": "# database_crud.py\n\nfrom typing import List\nfrom sqlalchemy.orm import Session\nfrom app import models, schemas\n\nclass UserRepository:\n    def __init__(self, db: Session):\n        self.db = db\n\n    def get_user(self, user_id: int):\n        return self.db.query(models.User).filter(models.User.id == user_id).first()\n\n    def get_users(self, skip: int = 0, limit: int = 100):\n        return self.db.query(models.User).offset(skip).limit(limit).all()\n\n    def create_user(self, user_in: schemas.UserCreate):\n        db_user = models.User(**user_in.dict())\n        self.db.add(db_user)\n        self.db.commit()\n        self.db.refresh(db_user)\n        return db_user\n\n    def update_user(self, user_id: int, user_in: schemas.UserUpdate):\n        db_user = self.get_user(user_id)\n        if db_user:\n            db_user.name = user_in.name\n            db_user.email = user_in.email\n            self.db.commit()\n            self.db.refresh(db_user)\n            return db_user\n        return None\n\n    def delete_user(self, user_id: int):\n        db_user = self.get_user(user_id)\n        if db_user:\n            self.db.delete(db_user)\n            self.db.commit()\n            return True\n        return False\n\n\nclass ItemRepository:\n    def __init__(self, db: Session):\n        self.db = db\n\n    def get_item(self, item_id: int):\n        return self.db.query(models.Item).filter(models.Item.id == item_id).first()\n\n    def get_items(self, skip: int = 0, limit: int = 100):\n        return self.db.query(models.Item).offset(skip).limit(limit).all()\n\n    def create_item(self, item_in: schemas.ItemCreate, owner_id: int):\n        db_item = models.Item(**item_in.dict(), owner_id=owner_id)\n        self.db.add(db_item)\n        self.db.commit()\n        self.db.refresh(db_item)\n        return db_item\n\n    def update_item(self, item_id: int, item_in: schemas.ItemUpdate):\n        db_item = self.get_item(item_id)\n        if db_item:\n            db_item.title = item_in.title\n            db_item.description = item_in.description\n            self.db.commit()\n            self.db.refresh(db_item)\n            return db_item\n        return None\n\n    def delete_item(self, item_id: int):\n        db_item = self.get_item(item_id)\n        if db_item:\n            self.db.delete(db_item)\n            self.db.commit()\n            return True\n        return False",
+      "target_file": "app/crud.py",
+      "agent_telemetry": [],
+      "constraint_checks": [
+        {
+          "check_name": "CWE-502: No eval/exec",
+          "passed": true,
+          "details": "eval=clean, exec=clean"
+        },
+        {
+          "check_name": "CWE-89: No f-string SQL",
+          "passed": true,
+          "details": "clean"
+        },
+        {
+          "check_name": "No assert for validation",
+          "passed": true,
+          "details": "clean"
+        },
+        {
+          "check_name": "CWE-78: No OS command injection",
+          "passed": true,
+          "details": "os.system=clean, shell=True=clean"
+        },
+        {
+          "check_name": "No bare except:",
+          "passed": true,
+          "details": "clean"
+        },
+        {
+          "check_name": "Creates Repository class(es)",
+          "passed": true,
+          "details": "Repository class found"
+        },
+        {
+          "check_name": "Historian ran",
+          "passed": true,
+          "details": "Found 10 patterns. 4 conventions detected. 3 common mistakes to avoid"
+        },
+        {
+          "check_name": "Architect ran",
+          "passed": true,
+          "details": "Target: database_crud_py.py. 3 directories mapped"
+        },
+        {
+          "check_name": "Planner ran",
+          "passed": true,
+          "details": "Plan created: Refactor the database module to implement the repository pattern f"
+        },
+        {
+          "check_name": "Reviewer ran",
+          "passed": true,
+          "details": "\u2705 Passed: 0 errors, 0 warnings"
+        }
+      ],
+      "errors": [],
+      "agent_summaries": {
+        "historian": "Found 10 patterns. 4 conventions detected. 3 common mistakes to avoid",
+        "architect": "Target: database_crud_py.py. 3 directories mapped",
+        "planner": "Plan created: Refactor the database module to implement the repository pattern for user and item CRUD operations. (complex complexity, 4 criteria, 2 target files)",
+        "alignment": "Aligned: 2 concerns, 2 suggestions",
+        "reviewer": "\u2705 Passed: 0 errors, 0 warnings",
+        "test_generator": "Generated 4 tests (pytest) \u2192 app\\tests\\test_crud.py"
+      },
+      "notes": ""
+    }
+  ],
+  "summary": {
+    "total_tasks": 3,
+    "passed_tasks": 3,
+    "total_time_ms": 41541.67589999997
+  }
+}
