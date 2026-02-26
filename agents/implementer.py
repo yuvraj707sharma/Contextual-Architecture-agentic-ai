@@ -225,6 +225,17 @@ class ImplementerAgent(BaseAgent):
                 sections.append(f"- `{f}`")
             sections.append("")
         
+        # User-provided pseudocode (highest priority constraint)
+        user_pseudocode = context.prior_context.get("user_pseudocode", "")
+        if user_pseudocode:
+            sections.append("## ⚡ USER-PROVIDED PSEUDOCODE (MANDATORY)")
+            sections.append("The user has provided pseudocode that defines the exact logic structure.")
+            sections.append("Your generated code MUST follow this pseudocode step-by-step.")
+            sections.append("Each step in the pseudocode should map to a clear block in your code.")
+            sections.append("Do NOT skip steps. Do NOT reorder steps. Do NOT add logic not in the pseudocode.")
+            sections.append(f"```\n{user_pseudocode}\n```")
+            sections.append("")
+        
         # Final instruction
         sections.append("## Generate Code")
         sections.append("Generate production-ready code that:")
@@ -233,6 +244,8 @@ class ImplementerAgent(BaseAgent):
         sections.append("3. Reuses existing utilities")
         sections.append("4. Avoids the common mistakes listed above")
         sections.append("5. Is ready to pass code review")
+        if user_pseudocode:
+            sections.append("6. Follows the user pseudocode step-by-step (non-negotiable)")
         
         return '\n'.join(sections)
     

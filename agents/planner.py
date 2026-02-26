@@ -307,10 +307,14 @@ class PlannerAgent(BaseAgent):
         # PR-based warnings
         pr_warnings = self._extract_pr_warnings(context)
 
-        # Pseudocode
-        pseudocode = self._generate_pseudocode(
-            action, entity, language, utilities
-        )
+        # Pseudocode — user-provided takes priority
+        user_pseudocode = context.prior_context.get("user_pseudocode", "")
+        if user_pseudocode:
+            pseudocode = f"# USER-PROVIDED PSEUDOCODE (follow this exactly)\n{user_pseudocode}"
+        else:
+            pseudocode = self._generate_pseudocode(
+                action, entity, language, utilities
+            )
 
         # Imports
         imports = self._infer_imports(context, action, entity, language)
@@ -648,6 +652,17 @@ class PlannerAgent(BaseAgent):
         pr_context = context.prior_context.get("pr_history", "")
         if pr_context:
             prompt_parts.append(f"\n{pr_context}")
+
+        # Add user-provided pseudocode as primary constraint
+        user_pseudocode = context.prior_context.get("user_pseudocode", "")
+        if user_pseudocode:
+            prompt_parts.append("\n## ⚡ USER-PROVIDED PSEUDOCODE (MANDATORY)")
+            prompt_parts.append("The user has provided their own pseudocode. "
+                                "Your plan MUST be anchored to this logic structure. "
+                                "The Implementer will generate code that follows this "
+                                "pseudocode step-by-step. Include it verbatim in the "
+                                "Pseudocode section of your plan.")
+            prompt_parts.append(f"```\n{user_pseudocode}\n```")
 
         user_prompt = "\n".join(prompt_parts)
 

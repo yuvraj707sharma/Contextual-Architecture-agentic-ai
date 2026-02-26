@@ -1,0 +1,31 @@
+{
+  "timestamp": "20260226_215256",
+  "total_prs": 1,
+  "results": [
+    {
+      "pr_number": 3,
+      "pr_title": "Error fetching PR #3",
+      "pipeline_success": false,
+      "generated_code": "",
+      "target_file": "",
+      "pipeline_time_ms": 0.0,
+      "attempts": 0,
+      "file_target_match": false,
+      "pattern_similarity": 0.0,
+      "security_passed": false,
+      "convention_score": 0.0,
+      "actual_files_changed": [],
+      "actual_diff_snippet": "",
+      "errors": [
+        "GROQ_API_KEY not found"
+      ],
+      "agent_summaries": {}
+    }
+  ],
+  "summary": {
+    "pipeline_success_rate": 0.0,
+    "file_match_rate": 0.0,
+    "security_compliance_rate": 0.0,
+    "avg_pattern_similarity": 0.0
+  }
+}

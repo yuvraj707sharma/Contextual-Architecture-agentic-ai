@@ -1,0 +1,54 @@
+{
+  "timestamp": "20260226_220044",
+  "total_prs": 1,
+  "results": [
+    {
+      "pr_number": 3,
+      "pr_title": "Add real-time streaming architecture with chunk-based grammar analysis and interview personas",
+      "pipeline_success": true,
+      "generated_code": "// real_time_streaming.go\n\npackage main\n\nimport (\n\t\"bytes\"\n\t\"context\"\n\t\"encoding/json\"\n\t\"errors\"\n\t\"fmt\"\n\t\"log\"\n\t\"net/http\"\n\n\t\"backend/internal/rules/english\"\n\t\"backend/internal/services/grammar_detector\"\n)\n\n// RealTimeStreaming handles real-time streaming architecture with chunk-based grammar analysis and interview personas\nfunc RealTimeStreaming(ctx context.Context, audioData []byte) (*TranscriptResult, error) {\n\t// Initialize chunk analyzer\n\tchunkAnalyzer := NewChunkAnalyzer()\n\n\t// Initialize deepgram service\n\tdeepgramService := NewDeepgramService()\n\n\t// Initialize transcript result\n\ttranscriptResult := &TranscriptResult{}\n\n\t// Process audio data in chunks\n\tfor _, chunk := range chunkAnalyzer.SplitAudioData(audioData) {\n\t\t// Transcribe audio chunk\n\t\ttranscript, err := deepgramService.TranscribeAudio(ctx, chunk)\n\t\tif err != nil {\n\t\t\treturn nil, fmt.Errorf(\"error transcribing audio: %w\", err)\n\t\t}\n\n\t\t// Detect errors in transcript\n\t\tgrammarRule, errorMessage := english.DetectError(transcript.Text)\n\t\tif grammarRule != nil {\n\t\t\t// Create error result\n\t\t\terrorResult := &grammar_detector.ErrorResult{\n\t\t\t\tErrorMessage: errorMessage,\n\t\t\t\tGrammarRule:  grammarRule,\n\t\t\t}\n\n\t\t\t// Add error result to transcript result\n\t\t\ttranscriptResult.ErrorResults = append(transcriptResult.ErrorResults, errorResult)\n\t\t}\n\n\t\t// Add transcript to transcript result\n\t\ttranscriptResult.Transcripts = append(transcriptResult.Transcripts, transcript)\n\t}\n\n\treturn transcriptResult, nil\n}\n\n// ChunkAnalyzer splits audio data into chunks for real-time processing\ntype ChunkAnalyzer struct{}\n\n// NewChunkAnalyzer returns a new chunk analyzer\nfunc NewChunkAnalyzer() *ChunkAnalyzer {\n\treturn &ChunkAnalyzer{}\n}\n\n// SplitAudioData splits audio data into chunks\nfunc (ca *ChunkAnalyzer) SplitAudioData(audioData []byte) [][]byte {\n\t// Split audio data into chunks of 10 words\n\tchunks := make([][]byte, 0)\n\tfor i := 0; i < len(audioData); i += 10 {\n\t\tchunks = append(chunks, audioData[i:min(i+10, len(audioData))])\n\t}\n\n\treturn chunks\n}\n\n// min returns the minimum of two integers\nfunc min(a, b int) int {\n\tif a < b {\n\t\treturn a\n\t}\n\n\treturn b\n}\n\n// DeepgramService handles deepgram API requests\ntype DeepgramService struct {\n\tapiKey     string\n\thttpClient *http.Client\n}\n\n// NewDeepgramService returns a new deepgram service\nfunc NewDeepgramService() *DeepgramService {\n\treturn &DeepgramService{\n\t\tapiKey:     \"YOUR_API_KEY\",\n\t\thttpClient: &http.Client{},\n\t}\n}\n\n// TranscribeAudio transcribes audio data using the deepgram API\nfunc (ds *DeepgramService) TranscribeAudio(ctx context.Context, audioData []byte) (*Transcript, error) {\n\t// Create HTTP request\n\turl := \"https://api.deepgram.com/v1/listen?model=nova-2&language=en&punctuate=true&interim_results=true\"\n\treq, err := http.NewRequest(\"POST\", url, bytes.NewBuffer(audioData))\n\tif err != nil {\n\t\treturn nil, fmt.Errorf(\"error creating HTTP request: %w\", err)\n\t}\n\n\t// Set API key and content type\n\treq.Header.Set(\"Authorization\", \"Token \"+ds.apiKey)\n\treq.Header.Set(\"Content-Type\", \"audio/wav\")\n\n\t// Send HTTP request\n\tresp, err := ds.httpClient.Do(req)\n\tif err != nil {\n\t\treturn nil, fmt.Errorf(\"error sending HTTP request: %w\", err)\n\t}\n\tdefer resp.Body.Close()\n\n\t// Unmarshal response\n\tvar transcript Transcript\n\terr = json.NewDecoder(resp.Body).Decode(&transcript)\n\tif err != nil {\n\t\treturn nil, fmt.Errorf(\"error unmarshaling response: %w\", err)\n\t}\n\n\treturn &transcript, nil\n}\n\n// Transcript represents a transcript from the deepgram API\ntype Transcript struct {\n\tText string `json:\"text\"`\n}\n\n// TranscriptResult represents the result of real-time streaming\ntype TranscriptResult struct {\n\tTranscripts    []*Transcript    `json:\"transcripts\"`\n\tErrorResults   []*grammar_detector.ErrorResult `json:\"error_results\"`\n}\n\nfunc main() {\n\t// Example usage\n\taudioData := []byte(\"Hello, world!\")\n\ttranscriptResult, err := RealTimeStreaming(context.Background(), audioData)\n\tif err != nil {\n\t\tlog.Printf(\"Error: %v\", err)\n\t\treturn\n\t}\n\n\tlog.Printf(\"Transcript result: %+v\", transcriptResult)\n}",
+      "target_file": "real_time_streaming.go",
+      "pipeline_time_ms": 71921.52399999759,
+      "attempts": 1,
+      "file_target_match": false,
+      "pattern_similarity": 0.111,
+      "security_passed": true,
+      "convention_score": 0.0,
+      "actual_files_changed": [
+        ".env.example",
+        "README.md",
+        "backend/cmd/server/main.go",
+        "backend/internal/services/chunk_analyzer.go",
+        "backend/internal/services/interviewer.go",
+        "backend/internal/services/openai_realtime.go",
+        "backend/internal/websocket/client.go",
+        "backend/internal/websocket/handler.go",
+        "docker-compose.yml",
+        "frontend/app/interview/page.tsx",
+        "frontend/components/TranscriptDisplay.tsx",
+        "frontend/hooks/useRealtimeSession.ts",
+        "frontend/hooks/useVoiceSession.ts",
+        "frontend/lib/websocket.ts",
+        "frontend/next-env.d.ts",
+        "frontend/package-lock.json",
+        "frontend/tsconfig.tsbuildinfo"
+      ],
+      "actual_diff_snippet": "diff --git a/.env.example b/.env.example\nindex e498457..cf5c542 100644\n--- a/.env.example\n+++ b/.env.example\n@@ -6,6 +6,9 @@ GROQ_API_KEY=your_groq_api_key_here\n OPENAI_API_KEY=your_openai_api_key_here\n GEMINI_API_KEY=your_gemini_api_key_here\n \n+# OpenAI Realtime API Configuration\n+OPENAI_REALTIME_MODEL=gpt-4o-realtime-preview-2024-10-01\n+\n # Supabase Configuration\n SUPABASE_URL=your_supabase_url_here\n SUPABASE_ANON_KEY=your_supabase_anon_key_here\ndiff --git a/README.md b/README.md\nindex 39e8cd6..920734a 100644\n--- a/README.md\n+++ b/README.md\n@@ -14,33 +14,106 @@ Vartalaap AI 2.0 is a real-time voice-based English learning platform that inter\n ### Key Features\n \n - \u26a1 **Ultra-Fast Interruption**: < 300ms latency for grammar corrections\n+- \ud83c\udfaf **Real-Time Chunk Analysis**: Detects errors as you speak, not after\n+- \ud83c\udfa4 **Interim Transcript Support**: Processes speech in real-time chunks\n - \ud83c\udf0f **Multi-Language Support**: Explanations in 9 Indian languages\n - \ud83c\udfa4 **Real-Time STT/TTS**: Powered by ",
+      "errors": [],
+      "agent_summaries": {
+        "historian": "Found 9 patterns. 4 conventions detected. 3 common mistakes to avoid",
+        "architect": "Target: real_time_streaming.go. 2 utilities found. 3 directories mapped",
+        "planner": "Plan created: Implement a real-time streaming architecture with chunk-based grammar analysis to reduce latency and enable interruption. (medium complexity, 2 criteria, 2 target files)",
+        "alignment": "Aligned: 2 concerns, 1 suggestions",
+        "reviewer": "\u2705 Passed: 0 errors, 2 warnings",
+        "test_generator": "Generated 2 tests (testing) \u2192 real_time_streaming_test.go"
+      }
+    }
+  ],
+  "summary": {
+    "pipeline_success_rate": 1.0,
+    "file_match_rate": 0.0,
+    "security_compliance_rate": 1.0,
+    "avg_pattern_similarity": 0.111
+  }
+}

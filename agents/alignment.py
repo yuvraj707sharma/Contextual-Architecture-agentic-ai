@@ -219,6 +219,26 @@ class AlignmentAgent(BaseAgent):
                 "consider adding anti-patterns to avoid"
             )
 
+        # 6. Check pseudocode compliance
+        user_pseudocode = context.prior_context.get("user_pseudocode", "")
+        if user_pseudocode:
+            plan_pseudocode = plan.get("pseudocode", "")
+            if not plan_pseudocode:
+                concerns.append(
+                    "User provided pseudocode but plan has no pseudocode section — "
+                    "Implementer will not follow the user's logic structure"
+                )
+            else:
+                # Check that key terms from user pseudocode appear in plan
+                pseudo_words = set(self._extract_keywords(user_pseudocode.lower()))
+                plan_pseudo_words = set(self._extract_keywords(plan_pseudocode.lower()))
+                pseudo_overlap = pseudo_words & plan_pseudo_words
+                if pseudo_words and len(pseudo_overlap) < max(1, len(pseudo_words) // 3):
+                    suggestions.append(
+                        f"User pseudocode may not be fully reflected in plan pseudocode "
+                        f"({len(pseudo_overlap)}/{len(pseudo_words)} keywords match)"
+                    )
+
         aligned = len(concerns) == 0
         return AlignmentOutput(
             aligned=aligned,

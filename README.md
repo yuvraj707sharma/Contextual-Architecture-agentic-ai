@@ -2,7 +2,7 @@
 
 > **An AI system that writes production-grade, enterprise-ready code by learning from project evolution and enforcing architectural compliance via multi-agent orchestration.**
 
-[![Tests](https://img.shields.io/badge/tests-270%2B%20passing-brightgreen)]()
+[![Tests](https://img.shields.io/badge/tests-332%20passing-brightgreen)]()
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)]()
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
 
@@ -69,7 +69,7 @@ export GOOGLE_API_KEY="..."
 ### 3. Run
 ```bash
 # CLI
-python -m agents "Add a /health endpoint" --repo ./your-project --language python
+python -m agents "Add a /health endpoint" --repo ./your-project --lang python
 
 # Python API
 from agents import Orchestrator
@@ -106,7 +106,15 @@ Tested against a real FastAPI project (44 files) with **Groq llama-3.3-70b-versa
 | Repository pattern refactor | 9/10 ⚠️ | **10/10** ✅ | 11.4s |
 | **Total** | **31/32 (96.9%)** | **32/32 (100%)** | **34.7s** |
 
-**Key finding**: RAG eliminated a CWE-89 false positive by providing the repo's actual SQLAlchemy ORM patterns. Total time dropped from 85.8s → 34.7s (2.5x faster).
+**Key finding**: RAG eliminated a CWE-89 false positive by providing the repo's actual SQLAlchemy ORM patterns. Total time dropped from 85.8s → 41.5s (51.6% reduction, 2.07x faster).
+
+### PR Evaluator
+
+Test against real GitHub PRs — fetches PR metadata, clones repo at pre-PR state, runs the pipeline, compares output:
+
+```bash
+python pr_evaluator.py --repo owner/repo --pr 42 --provider groq
+```
 
 ```bash
 # Run evaluation yourself
@@ -145,6 +153,7 @@ contextual-architect/
 ├── storage/                    # Structured data persistence
 │   └── sqlite_store.py         # Runs, telemetry, feedback (SQLite)
 ├── evaluation_harness.py       # Real-LLM testing framework
+├── pr_evaluator.py             # GitHub PR evaluation (real-world testing)
 └── evaluation_results/         # JSON results + generated code
 ```
 
@@ -158,11 +167,12 @@ contextual-architect/
 - [x] **Phase 5**: Evaluation harness (100% constraint compliance with RAG)
 - [x] **RAG Layer**: ChromaDB + AST chunking + incremental indexing (174 chunks, 44 files)
 - [x] **Storage**: SQLite for telemetry, feedback, pipeline runs
-- [x] **300+ tests** passing
+- [x] **PR Evaluator**: Test against real GitHub PRs
+- [x] **332 tests** passing
+- [x] **Research Paper**: IEEE submission on architectural compliance
 - [ ] **Phase 2**: Model fine-tuning (LoRA — future scope)
 - [ ] **Phase 4**: Deep security integration (bandit, gosec)
 - [ ] **MCP Integration**: Live VS Code/GitHub connection
-- [ ] **Research Paper**: IEEE submission on architectural compliance
 
 ## Research & Prior Art
 

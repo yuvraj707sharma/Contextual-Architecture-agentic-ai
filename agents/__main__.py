@@ -71,7 +71,7 @@ Examples:
         "--provider", "-p",
         type=str,
         default=None,
-        choices=["deepseek", "openai", "anthropic", "google", "ollama", "mock"],
+        choices=["groq", "deepseek", "openai", "anthropic", "google", "ollama", "mock"],
         help="LLM provider (default: auto-detect from env vars)",
     )
     parser.add_argument(
@@ -88,6 +88,16 @@ Examples:
     )
 
     # Pipeline configuration
+    parser.add_argument(
+        "--pseudocode", "--pseudo",
+        type=str,
+        default=None,
+        help=(
+            'User-provided pseudocode to anchor code generation. '
+            'Can be inline text or a path to a .txt/.md file. '
+            'Example: --pseudocode "1. Check auth header\n2. Decode JWT\n3. Attach user"'
+        ),
+    )
     parser.add_argument(
         "--max-retries",
         type=int,
@@ -263,6 +273,17 @@ async def run(args) -> int:
             logger.error(f"Failed to create LLM client: {e}")
             return 1
 
+    # Load pseudocode (from flag — can be inline text or file path)
+    user_pseudocode = None
+    if args.pseudocode:
+        pseudo_path = os.path.abspath(args.pseudocode)
+        if os.path.isfile(pseudo_path):
+            with open(pseudo_path, "r", encoding="utf-8") as f:
+                user_pseudocode = f.read().strip()
+            logger.info(f"Loaded pseudocode from: {pseudo_path}")
+        else:
+            user_pseudocode = args.pseudocode.strip()
+
     # Print banner
     print()
     print("🏗️  Contextual Architect")
@@ -271,6 +292,8 @@ async def run(args) -> int:
     print(f"   Language: {args.lang}")
     print(f"   Provider: {provider}" + (f" ({args.model})" if args.model else ""))
     print(f"   Retries:  {args.max_retries}")
+    if user_pseudocode:
+        print(f"   Pseudo:   {user_pseudocode[:80]}..." if len(user_pseudocode) > 80 else f"   Pseudo:   {user_pseudocode}")
     print()
 
     # Run pipeline
@@ -281,6 +304,7 @@ async def run(args) -> int:
             user_request=args.request,
             repo_path=repo_path,
             language=args.lang,
+            user_pseudocode=user_pseudocode,
         )
     except KeyboardInterrupt:
         print("\n\n⚠️  Interrupted by user.")

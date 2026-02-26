@@ -166,7 +166,8 @@ class Orchestrator:
         self, 
         user_request: str, 
         repo_path: str,
-        language: str = "python"
+        language: str = "python",
+        user_pseudocode: str = None,
     ) -> OrchestrationResult:
         """
         Run the full orchestration pipeline.
@@ -192,6 +193,14 @@ class Orchestrator:
         
         # Initialize workspace for filesystem-backed memory
         workspace = Workspace(repo_path)
+        
+        # Thread user pseudocode into context if provided
+        if user_pseudocode:
+            context.prior_context["user_pseudocode"] = user_pseudocode
+            self.logger.info(
+                f"User pseudocode provided ({len(user_pseudocode)} chars)",
+                extra={"agent": "orchestrator", "step": "pseudocode"},
+            )
         
         self.logger.info(
             "Starting orchestration",
