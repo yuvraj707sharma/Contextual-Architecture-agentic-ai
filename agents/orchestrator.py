@@ -96,6 +96,7 @@ class Orchestrator:
         llm_client: Optional[BaseLLMClient] = None, 
         config: Optional[AgentConfig] = None,
         pr_data_path: Optional[str] = None,
+        repo_path: Optional[str] = None,
     ):
         """
         Initialize the orchestrator.
@@ -104,6 +105,7 @@ class Orchestrator:
             llm_client: LLM client for Implementer (overrides config provider)
             config: Pipeline configuration (defaults to AgentConfig())
             pr_data_path: Path to pr_evolution.jsonl for PR search
+            repo_path: Path to the target repo (enables RAG indexing)
         """
         self.config = config or AgentConfig()
         self.llm_client = llm_client
@@ -113,10 +115,13 @@ class Orchestrator:
             fmt=self.config.log_format,
         )
         
+        # Initialize RAG retriever (optional — graceful if chromadb not installed)
+        retriever = self._init_retriever(repo_path) if repo_path else None
+        
         # Initialize agents — ALL receive LLM client
-        self.planner = PlannerAgent(llm_client)
+        self.planner = PlannerAgent(llm_client, retriever=retriever)
         self.alignment = AlignmentAgent(llm_client)
-        self.historian = HistorianAgent(llm_client)
+        self.historian = HistorianAgent(llm_client, retriever=retriever)
         self.architect = ArchitectAgent(llm_client)
         self.implementer = ImplementerAgent(llm_client)
         self.test_generator = TestGeneratorAgent(llm_client)
@@ -129,6 +134,33 @@ class Orchestrator:
         self.pr_searcher = PRSearcher()
         if pr_data_path:
             self.pr_searcher.load(pr_data_path)
+
+    def _init_retriever(self, repo_path: str):
+        """Initialize RAG retriever with incremental repo indexing."""
+        try:
+            from rag.vector_store import ChromaVectorStore
+            from rag.indexer import RepoIndexer
+            from rag.retriever import CodeRetriever
+            from pathlib import Path
+            
+            repo_name = Path(repo_path).name
+            persist_dir = str(Path(repo_path) / ".contextual-architect" / "chroma_db")
+            
+            store = ChromaVectorStore(repo_name=repo_name, persist_dir=persist_dir)
+            indexer = RepoIndexer(store, repo_path=repo_path, repo_name=repo_name)
+            stats = indexer.index()
+            
+            self.logger.info(
+                f"RAG ready: {stats['total_chunks']} chunks indexed "
+                f"({stats['files_indexed']} new files in {stats['duration_seconds']}s)"
+            )
+            return CodeRetriever(store)
+        except ImportError:
+            self.logger.debug("chromadb not installed — RAG disabled")
+            return None
+        except Exception as e:
+            self.logger.warning(f"RAG init failed (non-fatal): {e}")
+            return None
     
     async def run(
         self, 

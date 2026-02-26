@@ -128,8 +128,9 @@ class PlannerAgent(BaseAgent):
       - Medium/Complex → Full PlannerAgent run
     """
 
-    def __init__(self, llm_client=None):
+    def __init__(self, llm_client=None, retriever=None):
         super().__init__(llm_client)
+        self.retriever = retriever  # RAG: find similar past tasks
 
     @property
     def role(self) -> AgentRole:
@@ -157,6 +158,19 @@ class PlannerAgent(BaseAgent):
               - complexity: scored complexity
         """
         logger.info(f"Planning: {context.user_request[:80]}")
+
+        # RAG: find similar past implementations for context
+        if self.retriever and self.retriever.indexed_count > 0:
+            try:
+                similar = self.retriever.find_similar_tasks(
+                    context.user_request, k=5
+                )
+                if similar:
+                    context.prior_context["similar_implementations"] = (
+                        self.retriever.format_for_prompt(similar, max_chars=2000)
+                    )
+            except Exception:
+                pass  # RAG is optional
 
         # Score complexity first
         complexity = self._score_complexity(context)

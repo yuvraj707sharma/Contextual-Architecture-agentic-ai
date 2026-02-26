@@ -129,16 +129,18 @@ class HistorianAgent(BaseAgent):
         from .system_prompts import get_historian_prompt
         return get_historian_prompt(complexity)
     
-    def __init__(self, llm_client=None, github_client=None):
+    def __init__(self, llm_client=None, github_client=None, retriever=None):
         """
         Initialize the Historian Agent.
         
         Args:
             llm_client: LLM client for reasoning
             github_client: GitHub client for PR access (optional)
+            retriever: CodeRetriever for RAG-based semantic pattern search (optional)
         """
         super().__init__(llm_client)
         self.github_client = github_client
+        self.retriever = retriever  # RAG: semantic code search
         
         # Pattern detection rules (heuristic fallback)
         self._pattern_rules = self._build_pattern_rules()
@@ -190,10 +192,32 @@ class HistorianAgent(BaseAgent):
             if self.github_client:
                 output.relevant_prs = await self._search_relevant_prs(context)
             
-            # Step 2: Analyze local files for patterns
+            # Step 2: Analyze local files for patterns (heuristic)
             if context.repo_path:
                 local_patterns = await self._analyze_local_patterns(context)
                 output.patterns.extend(local_patterns)
+            
+            # Step 2.5: RAG-augmented semantic pattern search
+            if self.retriever and self.retriever.indexed_count > 0:
+                try:
+                    rag_results = self.retriever.find_patterns(
+                        context.user_request, k=8
+                    )
+                    for r in rag_results:
+                        meta = r.get("metadata", {})
+                        output.patterns.append(PatternMatch(
+                            source=meta.get("file_path", "unknown"),
+                            pattern_type="rag_semantic",
+                            description=f"Semantically similar: {meta.get('symbol_name', 'unknown')}",
+                            example_code=r.get("text", "")[:500],
+                            confidence=int(r.get("relevance", 0.5) * 100),
+                        ))
+                    # Add formatted RAG context for LLM prompt
+                    context.prior_context["rag_patterns"] = (
+                        self.retriever.format_for_prompt(rag_results, max_chars=3000)
+                    )
+                except Exception:
+                    pass  # RAG is optional — never block the pipeline
             
             # Step 3: Detect conventions from project structure
             conventions = await self._detect_conventions(context)
