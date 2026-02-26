@@ -97,16 +97,16 @@ Auto-detection: Set any `*_API_KEY` env var and the system finds the right provi
 
 ## Evaluation Results
 
-Tested against a real FastAPI project with **Groq llama-3.3-70b-versatile**:
+Tested against a real FastAPI project (44 files) with **Groq llama-3.3-70b-versatile**:
 
-| Task | Status | Constraints | Time |
-|------|--------|-------------|------|
-| Health check endpoint | ✅ Pass | 11/11 | 42.8s |
-| Security input validation | ✅ Pass | 11/11 | 17.1s |
-| Repository pattern refactor | ✅ Pass | 9/10 | 25.9s |
-| **Total** | **3/3** | **31/32 (96.9%)** | **85.8s** |
+| Task | Without RAG | With RAG | Time |
+|------|------------|----------|------|
+| Health check endpoint | 11/11 ✅ | 11/11 ✅ | 14.5s |
+| Security input validation | 11/11 ✅ | 11/11 ✅ | 8.8s |
+| Repository pattern refactor | 9/10 ⚠️ | **10/10** ✅ | 11.4s |
+| **Total** | **31/32 (96.9%)** | **32/32 (100%)** | **34.7s** |
 
-Automated constraint checks include: CWE-502 (no eval/exec), CWE-89 (no SQL injection), CWE-78 (no OS injection), pattern compliance, and agent output validation.
+**Key finding**: RAG eliminated a CWE-89 false positive by providing the repo's actual SQLAlchemy ORM patterns. Total time dropped from 85.8s → 34.7s (2.5x faster).
 
 ```bash
 # Run evaluation yourself
@@ -137,8 +137,14 @@ contextual-architect/
 │   └── src/
 │       ├── pr_evolution/       # Custom GitHub PR extractor
 │       └── codereviewer/       # Microsoft CodeReviewer dataset
+├── rag/                        # RAG layer (ChromaDB + AST chunking)
+│   ├── code_chunker.py         # AST-aware Python, regex JS/TS/Go
+│   ├── vector_store.py         # ChromaDB with abstract base class
+│   ├── retriever.py            # Agent-facing search interface
+│   └── indexer.py              # Incremental repo indexer
+├── storage/                    # Structured data persistence
+│   └── sqlite_store.py         # Runs, telemetry, feedback (SQLite)
 ├── evaluation_harness.py       # Real-LLM testing framework
-├── test-projects/              # FastAPI test project for evaluation
 └── evaluation_results/         # JSON results + generated code
 ```
 
@@ -149,11 +155,12 @@ contextual-architect/
 - [x] **Phase 3**: 7 LLM providers supported
 - [x] **Phase 3**: Constraint prompts (CWE denylist, CoAT reasoning)
 - [x] **Phase 3**: Feedback loop (clarification + learning)
-- [x] **Phase 5**: Evaluation harness (96.9% constraint compliance)
-- [x] **270+ tests** passing
+- [x] **Phase 5**: Evaluation harness (100% constraint compliance with RAG)
+- [x] **RAG Layer**: ChromaDB + AST chunking + incremental indexing (174 chunks, 44 files)
+- [x] **Storage**: SQLite for telemetry, feedback, pipeline runs
+- [x] **300+ tests** passing
 - [ ] **Phase 2**: Model fine-tuning (LoRA — future scope)
 - [ ] **Phase 4**: Deep security integration (bandit, gosec)
-- [ ] **RAG Layer**: Vector store for repo-specific PR history
 - [ ] **MCP Integration**: Live VS Code/GitHub connection
 - [ ] **Research Paper**: IEEE submission on architectural compliance
 

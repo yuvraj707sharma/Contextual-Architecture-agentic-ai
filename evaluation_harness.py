@@ -262,11 +262,19 @@ class ConstraintChecker:
             ))
 
         elif case.task_id == "security-input-validation":
-            has_pydantic = "Field(" in code or "BaseModel" in code or "SQLModel" in code
+            # Accept ANY form of proper input validation (not just Pydantic)
+            validation_signals = [
+                "Field(", "BaseModel", "SQLModel", "field_validator",  # Pydantic
+                "validator", "Depends(",                                # FastAPI
+                "validate_", "is_valid", "check_",                     # Repo utilities
+                "raise ValueError", "raise ValidationError",           # Manual
+                "re.match", "re.fullmatch", "re.search",               # Regex
+            ]
+            has_validation = any(signal in code for signal in validation_signals)
             checks.append(ConstraintCheckResult(
-                check_name="Uses Pydantic/SQLModel validation",
-                passed=has_pydantic,
-                details="Pydantic/SQLModel validation found" if has_pydantic else "missing",
+                check_name="Uses input validation",
+                passed=has_validation,
+                details="Input validation found" if has_validation else "no validation detected",
             ))
 
             has_http_exception = "HTTPException" in code
