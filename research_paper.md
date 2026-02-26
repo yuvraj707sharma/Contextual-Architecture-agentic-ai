@@ -2,14 +2,14 @@
 
 **Yuvraj Sharma**
 Department of Computer Science and Engineering
-[Your University Name], [City, State, India]
-Email: [your.email@university.edu]
+JECRC University, Jaipur, Rajasthan, India
+Email: yuvraj.24bcon0785@jecrcu.edu.in
 
 ---
 
 ## Abstract
 
-Large Language Models (LLMs) generate syntactically correct code but frequently violate repository-specific architectural patterns, naming conventions, and security constraints. We present **Contextual Architect**, a multi-agent orchestration system that addresses this *Integration Gap* — the disconnect between generated code and the conventions of the target codebase. Our system decomposes code generation into seven specialized agents (Historian, Architect, Planner, Alignment Checker, Implementer, Reviewer, and Test Generator) coordinated by a finite-state orchestrator. We introduce a Retrieval-Augmented Generation (RAG) layer that indexes target repositories using AST-aware code chunking and ChromaDB vector search, providing semantically relevant code examples to agents at inference time. A constraint-based security enforcement mechanism implements CWE denylist checks as a post-generation validation gate. We evaluate our system on a FastAPI benchmark (44 files, 174 code chunks) across three tasks of increasing complexity. With RAG enabled, the system achieves **100% constraint compliance (32/32 checks)**, a 2.5x speedup over the baseline (41.5s vs. 85.8s), and eliminates a CWE-89 security anti-pattern by grounding generation in the repository's existing ORM patterns. Our evaluation harness, comprising 332 automated tests across four test suites, demonstrates reproducible results. The system supports seven LLM providers and degrades gracefully when optional components (ChromaDB, sentence-transformers) are unavailable.
+Large Language Models (LLMs) generate syntactically correct code but frequently violate repository-specific architectural patterns, naming conventions, and security constraints. We present **Contextual Architect**, a multi-agent orchestration system that addresses this *Integration Gap* — the disconnect between generated code and the conventions of the target codebase. Our system decomposes code generation into seven specialized agents (Historian, Architect, Planner, Alignment Checker, Implementer, Reviewer, and Test Generator) coordinated by a finite-state orchestrator. We introduce a Retrieval-Augmented Generation (RAG) layer that indexes target repositories using AST-aware code chunking and ChromaDB vector search, providing semantically relevant code examples to agents at inference time. A constraint-based security enforcement mechanism implements CWE denylist checks as a post-generation validation gate. We evaluate our system on a FastAPI benchmark (44 files, 174 code chunks) across three tasks of increasing complexity. With RAG enabled, the system achieves **100% constraint compliance (32/32 checks)**, a 2.07x speedup over the baseline (41.5s vs. 85.8s), and eliminates a CWE-89 security anti-pattern by grounding generation in the repository's existing ORM patterns. Our evaluation harness, comprising 332 automated tests across four test suites, demonstrates reproducible results. The system supports seven LLM providers and degrades gracefully when optional components (ChromaDB, sentence-transformers) are unavailable.
 
 **Keywords**: Multi-agent systems, code generation, retrieval-augmented generation, software engineering, constraint enforcement, large language models
 
@@ -30,6 +30,8 @@ We present **Contextual Architect**, a system designed to close the Integration 
 2. **Repository-grounded RAG**: An AST-aware chunking system indexes the target repository into a ChromaDB vector store, providing semantically relevant code examples to agents at inference time. This grounds generation in the repository's actual patterns rather than the LLM's generic training data.
 
 3. **Constraint-based security enforcement**: A post-generation Reviewer agent checks generated code against a CWE denylist (CWE-89, CWE-502, CWE-78) and validates structural compliance. This provides runtime guarantees that training-time safety cannot.
+
+While each of these mechanisms draws on established techniques, their combination is novel. Prior multi-agent systems (ChatDev [4], MetaGPT [5]) target greenfield projects and lack repository awareness. Systems that target existing repositories (SWE-agent [12], AutoCodeRover [13]) use single-agent architectures without explicit security enforcement. RAG has been applied to code review comment generation [8] but not to code generation with AST-aware chunking. Security benchmarks (Pearce et al. [3]) identify the vulnerability problem but propose no enforcement mechanism. OctoBench [7] measures the constraint compliance gap but does not solve it. Contextual Architect is the first system to address the Integration Gap by combining all three mechanisms — multi-agent orchestration, repository-grounded AST-aware RAG, and runtime CWE enforcement — in a single pipeline targeting existing codebases.
 
 Our primary claim is that the combination of multi-agent orchestration and repository-specific RAG produces measurably more compliant code than single-shot LLM generation. We support this claim with a controlled before/after evaluation on a FastAPI benchmark, showing that RAG eliminates a CWE-89 false positive, improves file naming accuracy, and reduces total pipeline time by 51.6%.
 
@@ -168,6 +170,7 @@ Key design decisions:
 1. **Parallel discovery**: Historian and Architect run concurrently, reducing discovery time.
 2. **Filesystem-as-memory**: All intermediate outputs (style.json, historian.json, plan.md) are written to a `.contextual-architect/` workspace directory. This provides persistence across retries and debugging visibility.
 3. **Graceful degradation**: If ChromaDB is not installed, the system operates without RAG. If the LLM API fails, heuristic fallbacks activate. No single dependency failure crashes the pipeline.
+4. **Context budgeting**: Each agent's prompt is constructed within a token budget to avoid exceeding the LLM's context window. Repository context from RAG is truncated using a priority-based system: security-relevant patterns are prioritized over stylistic conventions, and recent files are weighted above older ones. This addresses the "lost in the middle" phenomenon [14], where LLMs disproportionately attend to the beginning and end of long prompts, by placing the most critical context — security constraints and the user's request — at prompt boundaries.
 
 ---
 
@@ -294,7 +297,7 @@ Table II presents the before/after RAG comparison.
 
 **T2 Validation Pattern Shift.** An instructive case: without RAG, the Implementer used inline Pydantic validators (matching the generic Python web development pattern). With RAG enabled, the Historian discovered the repository's existing `validate_email()` and `validate_password()` utility functions, and the Implementer reused them instead of reinventing validation. While a naive constraint checker flagged this as "missing Pydantic," manual review confirmed the RAG-augmented output is architecturally superior — it follows the DRY principle and matches established codebase conventions. We updated our constraint checker to accept any form of proper input validation, not just Pydantic-specific patterns.
 
-**Performance Improvement.** The 2.5x speedup (85.8s -> 41.5s) likely results from RAG providing more targeted context, reducing the LLM's need to "search" through its parametric memory. Better context produces more focused prompt-response interactions with fewer tokens.
+**Performance Improvement.** The 2.07x speedup (85.8s -> 41.5s, a 51.6% reduction) likely results from RAG providing more targeted context, reducing the LLM's need to "search" through its parametric memory. Better context produces more focused prompt-response interactions with fewer tokens.
 
 **File Naming.** Without our multi-word entity extraction, the Architect defaulted to generic names (`feature.py`). After implementing descriptive name generation, targets became `health_endpoint.py`, `input_validation_user.py`, and `app/crud.py` — matching the repository's naming conventions.
 
@@ -344,7 +347,23 @@ Commercial AI coding assistants (GitHub Copilot, Cursor, Claude Code) generate c
 
 These differences are complementary rather than competitive — our constraint enforcement and RAG mechanisms could be integrated into existing IDE-based tools.
 
-### C. Architectural Decisions
+### C. Novelty Contribution Matrix
+
+Table V maps each open problem identified in prior work to the corresponding mechanism in Contextual Architect.
+
+| Open Problem | Identified By | Our Solution |
+|---|---|---|
+| 40% of Copilot code is vulnerable | Pearce et al. [3] | CWE denylist + Reviewer reject-retry loop |
+| Multi-agent works, but only for new apps | ChatDev [4], MetaGPT [5] | Multi-agent pipeline targeting **existing** repos |
+| Agents solve tasks but violate project rules | OctoBench [7] | Constraint enforcement as separate Reviewer agent |
+| Code agents don't use repo-specific context | SWE-agent [12] | AST-aware RAG with incremental indexing |
+| AST used for navigation, not retrieval | AutoCodeRover [13] | AST-aware **chunking** for semantic vector search |
+| RAG explored only for review comments | Pornprasit et al. [8] | RAG for code **generation** with code-specific chunks |
+| Security enforcement is domain-locked (IaC) | MACOG [6] | General-purpose CWE enforcement for any language |
+
+*Table V: Mapping of open problems in prior work to novel contributions in Contextual Architect.*
+
+### D. Architectural Decisions
 
 **Graceful degradation** proved essential for practical adoption. By making ChromaDB and sentence-transformers optional dependencies, the system remains functional without RAG — important for environments where installing native dependencies is restricted. This is an enterprise-grade design choice absent from most academic prototypes.
 
@@ -354,7 +373,7 @@ These differences are complementary rather than competitive — our constraint e
 
 ## VIII. Conclusion and Future Work
 
-We presented Contextual Architect, a multi-agent system for repository-aware code generation that addresses the Integration Gap between LLM-generated code and existing codebase conventions. Through seven specialized agents, AST-aware RAG, and CWE denylist enforcement, the system achieves 100% constraint compliance on a FastAPI benchmark while providing a 2.5x speedup over the non-RAG baseline.
+We presented Contextual Architect, a multi-agent system for repository-aware code generation that addresses the Integration Gap between LLM-generated code and existing codebase conventions. Through seven specialized agents, AST-aware RAG, and CWE denylist enforcement, the system achieves 100% constraint compliance on a FastAPI benchmark while providing a 2.07x speedup (51.6% reduction) over the non-RAG baseline.
 
 Our evaluation demonstrates that repository-specific retrieval eliminates security anti-patterns (CWE-89), enables code reuse of existing utilities (DRY principle), and produces descriptive file naming — all measurable improvements over context-free generation.
 
@@ -389,6 +408,8 @@ Our evaluation demonstrates that repository-specific retrieval eliminates securi
 [12] J. Yang, C. E. Jimenez, A. Wettig, K. Lieret, S. Yao, K. Narasimhan, and O. Press, "SWE-agent: Agent-Computer Interfaces Enable Automated Software Engineering," arXiv:2405.15793, 2024.
 
 [13] Y. Zhang, H. Ruan, Z. Fan, and A. Roychoudhury, "AutoCodeRover: Autonomous Program Improvement," arXiv:2404.05427, 2024.
+
+[14] N. F. Liu, K. Lin, J. Hewitt, A. Paranjape, M. Bevilacqua, F. Petroni, and P. Liang, "Lost in the Middle: How Language Models Use Long Contexts," *TACL*, 2024. arXiv:2307.03172.
 
 ---
 
