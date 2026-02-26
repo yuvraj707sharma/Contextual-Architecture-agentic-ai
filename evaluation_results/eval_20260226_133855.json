@@ -1,0 +1,26 @@
+{
+  "timestamp": "20260226_133855",
+  "results": [
+    {
+      "task_id": "simple-health-check",
+      "success": false,
+      "pipeline_status": "exception",
+      "total_time_ms": 6511.233100000027,
+      "attempts": 0,
+      "generated_code": "",
+      "target_file": "",
+      "agent_telemetry": [],
+      "constraint_checks": [],
+      "errors": [
+        "Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401"
+      ],
+      "agent_summaries": {},
+      "notes": "Exception: HTTPStatusError"
+    }
+  ],
+  "summary": {
+    "total_tasks": 1,
+    "passed_tasks": 0,
+    "total_time_ms": 6511.233100000027
+  }
+}

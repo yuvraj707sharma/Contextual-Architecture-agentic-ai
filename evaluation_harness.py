@@ -109,7 +109,7 @@ class EvaluationResult:
 # ─── Evaluation Suite ─────────────────────────────────────────
 
 FASTAPI_REPO = str(
-    Path(__file__).parent / "test-projects" / "fastapi-app" / "backend"
+    Path(__file__).parent.parent / "test-projects" / "fastapi-app" / "backend"
 )
 
 EVALUATION_SUITE = [
@@ -370,8 +370,8 @@ async def run_single_task(
             notes=f"Provider: {provider}",
         )
 
-    # Create orchestrator with real LLM
-    orchestrator = Orchestrator(llm_client=llm_client)
+    # Create orchestrator with real LLM + RAG (auto-indexes repo)
+    orchestrator = Orchestrator(llm_client=llm_client, repo_path=case.repo_path)
 
     # Run pipeline
     start = time.perf_counter()
