@@ -277,15 +277,27 @@ class PlannerAgent(BaseAgent):
         goal = request.strip()
         action, entity = self._parse_request_intent(request)
 
+        # ── GUARDRAIL: Extract file references from user request ──
+        # If the user explicitly names a file (e.g. "Add X to foo.py"),
+        # that file MUST be the primary target with action=MODIFY.
+        user_referenced_files = self._extract_file_references(request, repo_path, language)
+
         # Determine target files from Architect context
         architect_data = context.prior_context.get("architect", {})
         target_file = architect_data.get("target_file", "")
         related_files = architect_data.get("related_files", [])
         utilities = architect_data.get("utilities", [])
 
-        # Build target files list
+        # Build target files list — user-referenced files take priority
         target_files = []
-        if target_file:
+        if user_referenced_files:
+            for ref_file in user_referenced_files:
+                target_files.append({
+                    "path": ref_file,
+                    "action": "MODIFY",
+                    "reason": f"Explicitly referenced by user in request",
+                })
+        elif target_file:
             action_type = "MODIFY" if self._file_exists(
                 repo_path, target_file
             ) else "CREATE"
@@ -342,6 +354,56 @@ class PlannerAgent(BaseAgent):
             complexity=complexity,
             pr_warnings=pr_warnings,
         )
+
+    def _extract_file_references(self, request: str, repo_path: str, language: str) -> list:
+        """Extract explicit file names referenced in the user's request.
+        
+        Detects patterns like:
+          "Add X to foo.py"          → ["foo.py"]
+          "Modify enemy_game.py"     → ["enemy_game.py"]
+          "Update Movie_ticket_pricing.py" → ["Movie_ticket_pricing.py"]
+          
+        Only returns files that actually exist in the repo.
+        """
+        import re
+        from pathlib import Path
+        
+        # File extension patterns per language
+        ext_map = {
+            "python": r"\b([\w/\\.-]+\.py)\b",
+            "javascript": r"\b([\w/\\.-]+\.(?:js|jsx|mjs))\b",
+            "typescript": r"\b([\w/\\.-]+\.(?:ts|tsx))\b",
+            "go": r"\b([\w/\\.-]+\.go)\b",
+        }
+        
+        pattern = ext_map.get(language, r"\b([\w/\\.-]+\.\w{1,4})\b")
+        
+        # Find all file-like references in the request
+        matches = re.findall(pattern, request, re.IGNORECASE)
+        
+        if not matches:
+            return []
+        
+        # Validate: only return files that actually exist in the repo
+        found = []
+        repo = Path(repo_path) if repo_path else None
+        
+        for match in matches:
+            if not repo:
+                continue
+            # Try exact path
+            if (repo / match).exists():
+                found.append(match)
+                continue
+            # Try searching recursively for the filename
+            basename = Path(match).name
+            for f in repo.rglob(basename):
+                if ".contextual-architect" not in str(f):
+                    rel = str(f.relative_to(repo)).replace("\\", "/")
+                    found.append(rel)
+                    break
+        
+        return found
 
     def _parse_request_intent(self, request: str) -> tuple:
         """Parse user request into (action, entity).
@@ -597,6 +659,17 @@ class PlannerAgent(BaseAgent):
             f"\n## Language\n{context.language}",
             f"\n## Complexity\n{complexity}",
         ]
+
+        # ── GUARDRAIL: Detect explicit file references in request ──
+        user_referenced_files = self._extract_file_references(
+            context.user_request, context.repo_path, context.language
+        )
+        if user_referenced_files:
+            prompt_parts.append("\n## ⚡ USER-REFERENCED FILES (MANDATORY)")
+            prompt_parts.append("The user explicitly named these files in their request.")
+            prompt_parts.append("You MUST use these as MODIFY targets — do NOT create new files.")
+            for f in user_referenced_files:
+                prompt_parts.append(f"- [MODIFY] `{f}`")
 
         # Add architect context (structure info)
         architect_data = context.prior_context.get("architect", {})

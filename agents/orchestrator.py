@@ -356,10 +356,27 @@ class Orchestrator:
             result.agent_summaries["alignment"] = align_response.summary
         
         # ── READ EXISTING FILE CONTENTS FOR IMPLEMENTER ────────────
-        # When the plan targets existing files for MODIFY, read their
-        # actual content so the Implementer can build upon them instead
-        # of generating code from scratch.
+        # Read content of files the Implementer should know about:
+        # 1. MODIFY targets from the plan
+        # 2. Files referenced in the user's request
+        # 3. Architect-suggested target files that exist
         existing_file_contents = {}
+        
+        def _try_read(file_path: str):
+            """Read a file if it exists, cap at 3000 chars."""
+            if file_path in existing_file_contents:
+                return  # Already read
+            full_path = Path(repo_path) / file_path
+            if full_path.exists() and full_path.is_file():
+                try:
+                    content = full_path.read_text(encoding="utf-8", errors="ignore")
+                    if len(content) > 3000:
+                        content = content[:3000] + "\n# ... (truncated) ..."
+                    existing_file_contents[file_path] = content
+                except Exception:
+                    pass
+        
+        # Source 1: MODIFY targets from the plan
         plan_data = context.prior_context.get("plan", {})
         target_files_list = plan_data.get("target_files", [])
         if not target_files_list and isinstance(plan_response.data, dict):
@@ -367,18 +384,30 @@ class Orchestrator:
         
         for target in target_files_list:
             file_path = target.get("path", "")
-            action = target.get("action", "MODIFY")
-            if action == "MODIFY" and file_path:
-                full_path = Path(repo_path) / file_path
-                if full_path.exists():
-                    try:
-                        content = full_path.read_text(encoding="utf-8", errors="ignore")
-                        # Cap at 3000 chars to avoid overloading the LLM context
-                        if len(content) > 3000:
-                            content = content[:3000] + "\n# ... (truncated) ..."
-                        existing_file_contents[file_path] = content
-                    except Exception:
-                        pass
+            if target.get("action") == "MODIFY" and file_path:
+                _try_read(file_path)
+        
+        # Source 2: Files referenced in the user's request
+        import re
+        ext_pattern = r"\b([\w/\\.-]+\.py)\b"
+        request_files = re.findall(ext_pattern, context.user_request, re.IGNORECASE)
+        for rf in request_files:
+            # Try exact path first
+            if (Path(repo_path) / rf).exists():
+                _try_read(rf)
+            else:
+                # Search recursively for the filename
+                basename = Path(rf).name
+                for f in Path(repo_path).rglob(basename):
+                    if ".contextual-architect" not in str(f):
+                        rel = str(f.relative_to(Path(repo_path))).replace("\\", "/")
+                        _try_read(rel)
+                        break
+        
+        # Source 3: Architect-suggested target file
+        architect_target = context.prior_context.get("architect", {}).get("target_file", "")
+        if architect_target:
+            _try_read(architect_target)
         
         if existing_file_contents:
             context.prior_context["existing_file_contents"] = existing_file_contents
