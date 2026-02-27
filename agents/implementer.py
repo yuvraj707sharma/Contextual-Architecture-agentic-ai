@@ -225,6 +225,21 @@ class ImplementerAgent(BaseAgent):
                 sections.append(f"- `{f}`")
             sections.append("")
         
+        # ── EXISTING FILE CONTENTS (critical for MODIFY) ──────────
+        # When modifying existing files, show the Implementer the
+        # actual code so it can BUILD UPON it, not replace it.
+        existing_files = context.prior_context.get("existing_file_contents", {})
+        if existing_files:
+            sections.append("## 📄 EXISTING CODE (BUILD UPON THIS — DO NOT REPLACE)")
+            sections.append("The following files already exist in the project.")
+            sections.append("You MUST preserve and extend this code, NOT rewrite it from scratch.")
+            sections.append("Wrap existing logic into functions if needed, then add new functions on top.")
+            sections.append("")
+            for file_path, content in existing_files.items():
+                sections.append(f"### Current `{file_path}`:")
+                sections.append(f"```\n{content}\n```")
+                sections.append("")
+        
         # User-provided pseudocode (highest priority constraint)
         user_pseudocode = context.prior_context.get("user_pseudocode", "")
         if user_pseudocode:

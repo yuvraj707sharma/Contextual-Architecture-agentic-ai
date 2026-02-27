@@ -13,6 +13,7 @@ This is the "conductor" that:
 import asyncio
 import os
 import time
+from pathlib import Path
 from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional
 
@@ -353,6 +354,34 @@ class Orchestrator:
                 context.prior_context["alignment_concerns"] = concerns
             
             result.agent_summaries["alignment"] = align_response.summary
+        
+        # ── READ EXISTING FILE CONTENTS FOR IMPLEMENTER ────────────
+        # When the plan targets existing files for MODIFY, read their
+        # actual content so the Implementer can build upon them instead
+        # of generating code from scratch.
+        existing_file_contents = {}
+        plan_data = context.prior_context.get("plan", {})
+        target_files_list = plan_data.get("target_files", [])
+        if not target_files_list and isinstance(plan_response.data, dict):
+            target_files_list = plan_response.data.get("target_files", [])
+        
+        for target in target_files_list:
+            file_path = target.get("path", "")
+            action = target.get("action", "MODIFY")
+            if action == "MODIFY" and file_path:
+                full_path = Path(repo_path) / file_path
+                if full_path.exists():
+                    try:
+                        content = full_path.read_text(encoding="utf-8", errors="ignore")
+                        # Cap at 3000 chars to avoid overloading the LLM context
+                        if len(content) > 3000:
+                            content = content[:3000] + "\n# ... (truncated) ..."
+                        existing_file_contents[file_path] = content
+                    except Exception:
+                        pass
+        
+        if existing_file_contents:
+            context.prior_context["existing_file_contents"] = existing_file_contents
         
         # ── IMPLEMENTATION + REVIEW LOOP ──────────────────────────
         max_retries = self.config.max_retries
