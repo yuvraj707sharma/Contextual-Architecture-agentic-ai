@@ -189,8 +189,11 @@ class TestSafeCodeWriter:
 
     def test_apply_modification_creates_backup(self, tmp_repo):
         writer = SafeCodeWriter(str(tmp_repo))
+        # Use content that modifies (adds to) the file without deleting >50%
+        existing = (tmp_repo / "src" / "main.py").read_text(encoding="utf-8")
+        modified = existing + '\ndef new_function():\n    """Added by test."""\n    return True\n'
         changeset = writer.plan_changes(
-            {"src/main.py": '# new content\n'},
+            {"src/main.py": modified},
             language="python",
         )
         changeset.approve_all()
@@ -222,6 +225,20 @@ class TestSafeCodeWriter:
         # Should produce no changes since content is identical
         model_changes = [c for c in changeset.changes if "models" in c.file_path]
         assert len(model_changes) == 0
+
+    def test_destructive_modification_blocked(self, tmp_repo):
+        """Replacing >50% of a file should be pre-rejected as CRITICAL."""
+        writer = SafeCodeWriter(str(tmp_repo))
+        changeset = writer.plan_changes(
+            {"src/main.py": "# completely replaced\n"},
+            language="python",
+        )
+
+        assert len(changeset.changes) == 1
+        change = changeset.changes[0]
+        assert change.risk_level == RiskLevel.CRITICAL
+        assert change.approved is False  # Pre-rejected
+        assert "BLOCKED" in change.description
 
 
 class TestConvenience:

@@ -369,6 +369,30 @@ class SafeCodeWriter:
         additions = sum(1 for line in diff if line.startswith('+') and not line.startswith('+++'))
         deletions = sum(1 for line in diff if line.startswith('-') and not line.startswith('---'))
         
+        # ── GUARDRAIL: Block destructive modifications ──────────
+        # If the generated code would delete >50% of an existing file,
+        # this is almost certainly wrong (e.g., Implementer replacing
+        # entire file instead of modifying it). Block it.
+        if len(existing_lines) > 10 and deletions > len(existing_lines) * 0.5:
+            return ProposedChange(
+                file_path=file_path,
+                change_type=ChangeType.MODIFY_LINES,
+                risk_level=RiskLevel.CRITICAL,
+                description=(
+                    f"⛔ BLOCKED: Would delete {deletions}/{len(existing_lines)} lines "
+                    f"({int(deletions/len(existing_lines)*100)}% of file). "
+                    f"This looks like a full replacement, not a modification. "
+                    f"Consider creating a new file instead."
+                ),
+                new_content=new_content,
+                diff_lines=diff,
+                lines_added=additions,
+                lines_removed=deletions,
+                auto_approved=False,
+                approved=False,  # Pre-rejected
+                reason="Destructive modification blocked by safety guard",
+            )
+        
         # Determine change type
         if deletions == 0:
             change_type = ChangeType.ADD_LINES

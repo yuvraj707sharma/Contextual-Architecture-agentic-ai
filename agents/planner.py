@@ -779,7 +779,22 @@ class PlannerAgent(BaseAgent):
             imports_needed=imports,
             existing_utilities=utilities,
             complexity=complexity,
+            pr_warnings=self._validate_target_files(target_files, context),
         )
+
+    def _validate_target_files(self, target_files, context):
+        """Validate that MODIFY targets actually exist. Fix to CREATE if not."""
+        warnings = []
+        for target in target_files:
+            path = target.get("path", "")
+            action = target.get("action", "MODIFY")
+            if action == "MODIFY" and not self._file_exists(context.repo_path, path):
+                warnings.append(
+                    f"Plan referenced MODIFY on '{path}' but file doesn't exist. "
+                    f"Changed to CREATE."
+                )
+                target["action"] = "CREATE"
+        return warnings
 
     def _extract_sections(self, text: str) -> Dict[str, str]:
         """Extract markdown sections from LLM output.

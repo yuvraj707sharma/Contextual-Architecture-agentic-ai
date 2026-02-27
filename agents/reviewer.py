@@ -255,6 +255,17 @@ class ReviewerAgent(BaseAgent):
             if external_issues:
                 result.checks_run.append("external_tools")
         
+        # 6. Library consistency check
+        # If the project uses specific frameworks, verify generated code
+        # uses them too (e.g., don't generate print() for a pygame project)
+        if repo_path:
+            consistency_issues = self._check_library_consistency(
+                code, file_path, language, repo_path
+            )
+            result.issues.extend(consistency_issues)
+            if consistency_issues:
+                result.checks_run.append("library_consistency")
+        
         # Determine overall pass/fail
         error_count = len(result.errors)
         warning_count = len(result.warnings)
@@ -266,6 +277,77 @@ class ReviewerAgent(BaseAgent):
         )
         
         return result
+
+    def _check_library_consistency(
+        self,
+        code: str,
+        file_path: str,
+        language: str,
+        repo_path: str,
+    ) -> List[ValidationIssue]:
+        """Check that generated code uses the same libraries as the project."""
+        issues = []
+        
+        # Only check for Python for now
+        if language != "python":
+            return issues
+        
+        # Detect what frameworks the project uses by scanning imports
+        from pathlib import Path
+        project_path = Path(repo_path)
+        
+        # UI frameworks that should be consistent
+        ui_frameworks = {"pygame", "tkinter", "kivy", "pyqt5", "wxpython"}
+        web_frameworks = {"flask", "fastapi", "django", "tornado", "aiohttp"}
+        
+        project_frameworks = set()
+        files_checked = 0
+        for f in project_path.rglob("*.py"):
+            if files_checked >= 15:
+                break
+            if ".contextual-architect" in str(f):
+                continue
+            try:
+                content = f.read_text(encoding="utf-8", errors="ignore")
+                for fw in ui_frameworks | web_frameworks:
+                    if f"import {fw}" in content or f"from {fw}" in content:
+                        project_frameworks.add(fw)
+                files_checked += 1
+            except Exception:
+                continue
+        
+        if not project_frameworks:
+            return issues
+        
+        # Check if generated code uses any of the project's frameworks
+        code_lower = code.lower()
+        project_ui = project_frameworks & ui_frameworks
+        project_web = project_frameworks & web_frameworks
+        
+        # UI framework mismatch check
+        if project_ui:
+            uses_project_ui = any(
+                f"import {fw}" in code or f"from {fw}" in code
+                for fw in project_ui
+            )
+            uses_cli = (
+                "input(" in code and "print(" in code
+                and not any(f"import {fw}" in code for fw in project_ui)
+            )
+            if uses_cli and not uses_project_ui:
+                issues.append(ValidationIssue(
+                    check_type=CheckType.IMPORT,
+                    severity=Severity.WARNING,
+                    message=(
+                        f"Project uses {', '.join(project_ui)} for UI but generated "
+                        f"code uses print()/input(). Consider using "
+                        f"{', '.join(project_ui)} instead."
+                    ),
+                    file_path=file_path,
+                    suggestion=f"Use {', '.join(project_ui)} for consistency with the project",
+                ))
+        
+        return issues
     
     async def validate_batch(
         self,

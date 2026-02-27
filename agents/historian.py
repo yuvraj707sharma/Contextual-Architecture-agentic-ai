@@ -477,7 +477,76 @@ class HistorianAgent(BaseAgent):
         # Detect import style (sample from files)
         conventions["imports"] = self._detect_import_style(repo_path, context.language)
         
+        # ── GUARDRAIL: Framework/library detection ─────────────
+        # When no patterns exist (no git history), scan imports to
+        # identify what frameworks the project uses. This prevents
+        # generating print() code for a pygame project.
+        frameworks = self._detect_frameworks(repo_path, context.language)
+        if frameworks:
+            conventions["frameworks"] = ", ".join(frameworks)
+            # Also inject into prior_context for downstream agents
+            context.prior_context["detected_frameworks"] = frameworks
+        
         return conventions
+
+    def _detect_frameworks(self, repo_path, language: str) -> list:
+        """Scan import statements across project files to detect frameworks."""
+        from pathlib import Path
+        
+        # Known frameworks to detect per language
+        FRAMEWORK_MAP = {
+            "python": {
+                "pygame": "pygame",
+                "flask": "flask",
+                "django": "django",
+                "fastapi": "fastapi",
+                "tkinter": "tkinter",
+                "streamlit": "streamlit",
+                "tornado": "tornado",
+                "numpy": "numpy",
+                "pandas": "pandas",
+                "sqlalchemy": "sqlalchemy",
+                "requests": "requests",
+                "aiohttp": "aiohttp",
+            },
+            "javascript": {
+                "react": "react",
+                "express": "express",
+                "vue": "vue",
+                "next": "next",
+                "angular": "angular",
+            },
+            "typescript": {
+                "react": "react",
+                "express": "express",
+                "nestjs": "@nestjs",
+                "next": "next",
+            },
+        }
+        
+        known = FRAMEWORK_MAP.get(language, FRAMEWORK_MAP.get("python", {}))
+        detected = set()
+        
+        # Scan up to 20 source files
+        extensions = {"python": "*.py", "javascript": "*.js", "typescript": "*.ts"}
+        glob_pattern = extensions.get(language, "*.py")
+        
+        files_scanned = 0
+        for f in repo_path.rglob(glob_pattern):
+            if files_scanned >= 20:
+                break
+            if ".contextual-architect" in str(f) or "node_modules" in str(f):
+                continue
+            try:
+                content = f.read_text(encoding="utf-8", errors="ignore")
+                for framework_name, import_key in known.items():
+                    if f"import {import_key}" in content or f"from {import_key}" in content:
+                        detected.add(framework_name)
+                files_scanned += 1
+            except Exception:
+                continue
+        
+        return sorted(detected)
     
     def _get_default_conventions(self, language: str) -> Dict[str, str]:
         """Fallback to default conventions if repo can't be analyzed."""
