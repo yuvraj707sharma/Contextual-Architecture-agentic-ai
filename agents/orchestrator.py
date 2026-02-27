@@ -331,22 +331,29 @@ class Orchestrator:
         
         # ── OVERRIDE: Planner's MODIFY target overrides Architect's guess ──
         # The Architect runs BEFORE the Planner and guesses a target filename.
-        # If the Planner says MODIFY an existing file, use THAT as the target.
+        # If the Planner says MODIFY an existing file AND the user referenced
+        # that file in their request, use it as the target.
+        # We DON'T override if the LLM hallucinated a MODIFY target that
+        # the user never mentioned (e.g., picking a random file to modify).
+        import re
+        user_request_lower = context.user_request.lower()
         plan_targets = planner_response.data.get("plan", {}).get("target_files", [])
         if not plan_targets:
             plan_targets = planner_response.data.get("target_files", [])
         for t in plan_targets:
             if t.get("action") == "MODIFY" and t.get("path"):
                 modify_target = t["path"]
-                result.target_file = modify_target
-                # Also update the architect context so the Implementer uses it
-                if "architect" in context.prior_context:
-                    context.prior_context["architect"]["target_file"] = modify_target
-                self.logger.info(
-                    f"Planner overrides target: {modify_target}",
-                    extra={"agent": "orchestrator"},
-                )
-                break
+                # Only override if the user explicitly named this file
+                target_basename = Path(modify_target).stem.lower()
+                if target_basename in user_request_lower:
+                    result.target_file = modify_target
+                    if "architect" in context.prior_context:
+                        context.prior_context["architect"]["target_file"] = modify_target
+                    self.logger.info(
+                        f"Planner overrides target: {modify_target}",
+                        extra={"agent": "orchestrator"},
+                    )
+                    break
         
         self.logger.info(
             f"Plan created: {complexity} complexity",
