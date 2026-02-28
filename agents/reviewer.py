@@ -155,6 +155,21 @@ class ReviewerAgent(BaseAgent):
             (r"dangerouslySetInnerHTML", "Warning: XSS risk - sanitize input"),
             (r"password\s*[:=]\s*['\"][^'\"]+['\"]", "Warning: hardcoded password"),
         ],
+        "cpp": [
+            (r"system\s*\(", "Warning: system() is vulnerable to injection"),
+            (r"gets\s*\(", "Dangerous: gets() has no bounds checking - use fgets()"),
+            (r"sprintf\s*\(", "Warning: sprintf() can overflow - use snprintf()"),
+            (r"strcpy\s*\(", "Warning: strcpy() can overflow - use strncpy()"),
+            (r"strcat\s*\(", "Warning: strcat() can overflow - use strncat()"),
+            (r"password\s*=\s*\"[^\"]+\"", "Warning: hardcoded password"),
+        ],
+        "c": [
+            (r"system\s*\(", "Warning: system() is vulnerable to injection"),
+            (r"gets\s*\(", "Dangerous: gets() has no bounds checking - use fgets()"),
+            (r"sprintf\s*\(", "Warning: sprintf() can overflow - use snprintf()"),
+            (r"strcpy\s*\(", "Warning: strcpy() can overflow - use strncpy()"),
+            (r"malloc\s*\(", "Info: check for NULL return from malloc()"),
+        ],
     }
     
     # Tool commands for each language
@@ -173,6 +188,12 @@ class ReviewerAgent(BaseAgent):
             "syntax": ["tsc", "--noEmit"],
             "type": ["tsc", "--noEmit"],
             "lint": ["eslint"],
+        },
+        "cpp": {
+            "syntax": ["g++", "-fsyntax-only", "-std=c++17"],
+        },
+        "c": {
+            "syntax": ["gcc", "-fsyntax-only"],
         },
     }
     
@@ -400,6 +421,8 @@ class ReviewerAgent(BaseAgent):
             issues.extend(self._check_go_syntax(code, file_path))
         elif language in ("typescript", "javascript"):
             issues.extend(self._check_js_syntax(code, file_path))
+        elif language in ("cpp", "c"):
+            issues.extend(self._check_c_syntax(code, file_path, language))
         
         return issues
     
@@ -480,6 +503,55 @@ class ReviewerAgent(BaseAgent):
                 check_type=CheckType.SYNTAX,
                 severity=Severity.ERROR,
                 message=f"Unbalanced parentheses: {open_parens} opening, {close_parens} closing",
+                file_path=file_path,
+            ))
+        
+        return issues
+    
+    def _check_c_syntax(self, code: str, file_path: str, language: str) -> List[ValidationIssue]:
+        """Check C/C++ syntax (basic checks)."""
+        issues = []
+        
+        # Check for unbalanced braces
+        open_braces = code.count('{')
+        close_braces = code.count('}')
+        if open_braces != close_braces:
+            issues.append(ValidationIssue(
+                check_type=CheckType.SYNTAX,
+                severity=Severity.ERROR,
+                message=f"Unbalanced braces: {open_braces} opening, {close_braces} closing",
+                file_path=file_path,
+                suggestion="Check for missing or extra braces",
+            ))
+        
+        # Check for unbalanced parentheses
+        open_parens = code.count('(')
+        close_parens = code.count(')')
+        if open_parens != close_parens:
+            issues.append(ValidationIssue(
+                check_type=CheckType.SYNTAX,
+                severity=Severity.ERROR,
+                message=f"Unbalanced parentheses: {open_parens} opening, {close_parens} closing",
+                file_path=file_path,
+            ))
+        
+        # Check for missing semicolons (common in C/C++)
+        lines = code.split('\n')
+        for line_num, line in enumerate(lines, 1):
+            stripped = line.strip()
+            # Skip empty, preprocessor, comments, braces, labels
+            if (not stripped or stripped.startswith('#') or stripped.startswith('//')
+                or stripped.startswith('/*') or stripped.endswith('*/') 
+                or stripped.endswith('{') or stripped.endswith('}')
+                or stripped.endswith(':') or stripped.startswith('*')):
+                continue
+        
+        # Check for #include in C/C++
+        if '#include' not in code and not file_path.endswith('.h') and not file_path.endswith('.hpp'):
+            issues.append(ValidationIssue(
+                check_type=CheckType.SYNTAX,
+                severity=Severity.INFO,
+                message="No #include directives found - consider including necessary headers",
                 file_path=file_path,
             ))
         
@@ -643,6 +715,9 @@ class ReviewerAgent(BaseAgent):
             "go": ".go",
             "typescript": ".ts",
             "javascript": ".js",
+            "cpp": ".cpp",
+            "c": ".c",
+            "java": ".java",
         }
         ext = ext_map.get(language, ".txt")
         

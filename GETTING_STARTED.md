@@ -308,7 +308,7 @@ python -m agents --help
 
 ### Supported Languages
 
-`python` | `go` | `typescript` | `javascript`
+`python` | `cpp` | `c` | `go` | `typescript` | `javascript` | `java`
 
 ### Supported Providers
 

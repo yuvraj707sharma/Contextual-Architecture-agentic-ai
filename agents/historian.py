@@ -352,6 +352,9 @@ class HistorianAgent(BaseAgent):
             "python": [".py"],
             "typescript": [".ts", ".tsx"],
             "javascript": [".js", ".jsx"],
+            "cpp": [".cpp", ".cc", ".cxx", ".h", ".hpp"],
+            "c": [".c", ".h"],
+            "java": [".java"],
         }
         extensions = ext_map.get(language, [])
         
@@ -609,7 +612,7 @@ class HistorianAgent(BaseAgent):
         lang_patterns = patterns.get(language, [])
         
         # Sample a few files
-        ext_map = {"go": ".go", "python": ".py", "typescript": ".ts"}
+        ext_map = {"go": ".go", "python": ".py", "typescript": ".ts", "cpp": ".cpp", "c": ".c", "java": ".java"}
         ext = ext_map.get(language, "")
         
         for file in list(repo_path.rglob(f"*{ext}"))[:10]:

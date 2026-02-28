@@ -540,6 +540,9 @@ class SafeCodeWriter:
             "python": [".py"],
             "typescript": [".ts", ".tsx"],
             "javascript": [".js", ".jsx"],
+            "cpp": [".cpp", ".cc", ".cxx", ".h", ".hpp"],
+            "c": [".c", ".h"],
+            "java": [".java"],
         }
         exts = extensions.get(language, [])
         files = []

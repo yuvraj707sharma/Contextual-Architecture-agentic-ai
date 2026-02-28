@@ -150,6 +150,9 @@ class ArchitectAgent(BaseAgent):
         "python": [".py"],
         "typescript": [".ts", ".tsx"],
         "javascript": [".js", ".jsx"],
+        "cpp": [".cpp", ".cc", ".cxx", ".h", ".hpp"],
+        "c": [".c", ".h"],
+        "java": [".java"],
     }
     
     # Directories to ignore
@@ -338,6 +341,20 @@ class ArchitectAgent(BaseAgent):
             pattern = r'export\s+default\s+(?:function|class)?\s*(\w+)'
             exports.extend(re.findall(pattern, content))
         
+        elif language in ("cpp", "c"):
+            # C/C++: functions and classes
+            pattern = r'^(?:void|int|float|double|char|bool|string|auto|unsigned|long)\s+(\w+)\s*\('
+            exports.extend(re.findall(pattern, content, re.MULTILINE))
+            if language == "cpp":
+                pattern = r'^class\s+(\w+)'
+                exports.extend(re.findall(pattern, content, re.MULTILINE))
+        
+        elif language == "java":
+            pattern = r'public\s+(?:static\s+)?(?:void|int|String|boolean|\w+)\s+(\w+)\s*\('
+            exports.extend(re.findall(pattern, content))
+            pattern = r'public\s+class\s+(\w+)'
+            exports.extend(re.findall(pattern, content))
+        
         return list(set(exports))  # Dedupe
     
     def _suggest_target_location(
@@ -364,21 +381,33 @@ class ArchitectAgent(BaseAgent):
             if keyword in request_lower:
                 for dir_path in dirs:
                     if (repo_path / dir_path).exists():
-                        # Suggest a file in this directory
-                        ext = ".go" if language == "go" else ".py" if language == "python" else ".ts"
+                        ext_lookup = {
+                            "go": ".go", "python": ".py", "typescript": ".ts",
+                            "javascript": ".js", "cpp": ".cpp", "c": ".c", "java": ".java",
+                        }
+                        ext = ext_lookup.get(language, ".py")
                         feature_name = self._extract_feature_name(request_lower)
                         return f"{dir_path}/{feature_name}{ext}", dir_path
         
         # Default: src/ or internal/ or root
         feature_name = self._extract_feature_name(request_lower)
+        ext_lookup = {
+            "go": ".go", "python": ".py", "typescript": ".ts",
+            "javascript": ".js", "cpp": ".cpp", "c": ".c", "java": ".java",
+        }
         if (repo_path / "internal").exists():
-            ext = ".go" if language == "go" else ".py" if language == "python" else ".ts"
+            ext = ext_lookup.get(language, ".py")
             return f"internal/{feature_name}{ext}", "internal"
         if (repo_path / "src").exists():
-            ext = ".py" if language == "python" else ".ts"
+            ext = ext_lookup.get(language, ".py")
             return f"src/{feature_name}{ext}", "src"
         
-        ext = ".go" if language == "go" else ".py" if language == "python" else ".ts"
+        feature_name = self._extract_feature_name(request_lower)
+        ext_lookup = {
+            "go": ".go", "python": ".py", "typescript": ".ts",
+            "javascript": ".js", "cpp": ".cpp", "c": ".c", "java": ".java",
+        }
+        ext = ext_lookup.get(language, ".py")
         return f"{feature_name}{ext}", ""
     
     def _extract_feature_name(self, request: str) -> str:

@@ -62,7 +62,7 @@ Examples:
         "--lang", "-l",
         type=str,
         default="python",
-        choices=["python", "go", "typescript", "javascript"],
+        choices=["python", "go", "typescript", "javascript", "cpp", "c", "java"],
         help="Programming language (default: python)",
     )
 
