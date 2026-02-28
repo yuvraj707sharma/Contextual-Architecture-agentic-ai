@@ -96,6 +96,12 @@ def print_help():
     print(Colors.colored("    ❯", Colors.GREEN) + " Fix bug in @utils/auth.cpp")
     print("    Without @, a new file is created.")
     print()
+    print(Colors.colored("  Pseudocode (|||):", Colors.BOLD))
+    print(Colors.colored("  ─────────────────────────────────────", Colors.DIM))
+    print("    Add pseudocode after ||| to control the logic:")
+    print(Colors.colored("    ❯", Colors.GREEN) + " Add fibonacci ||| 1. Take n 2. Iterative 3. Print all")
+    print(Colors.colored("    ❯", Colors.GREEN) + " Add sort to @data.cpp ||| use merge sort, not bubble sort")
+    print()
     print(Colors.colored("  Supported Languages:", Colors.BOLD))
     print(Colors.colored("  ─────────────────────────────────────", Colors.DIM))
     print("    python │ cpp │ c │ go │ typescript │ javascript │ java")
@@ -139,6 +145,7 @@ async def run_single_request(
     config: AgentConfig,
     llm_client,
     verbose: bool = False,
+    user_pseudocode: str = None,
 ) -> Optional[OrchestrationResult]:
     """Run a single request through the pipeline."""
     from .__main__ import print_result
@@ -150,6 +157,7 @@ async def run_single_request(
             user_request=request,
             repo_path=repo_path,
             language=lang,
+            user_pseudocode=user_pseudocode,
         )
         print_result(result, orchestrator)
         return result
@@ -285,6 +293,14 @@ async def interactive_session(args) -> int:
                 print()
                 continue
             
+            # Parse pseudocode (separated by |||)
+            user_pseudocode = None
+            if '|||' in user_input:
+                parts = user_input.split('|||', 1)
+                user_input = parts[0].strip()
+                user_pseudocode = parts[1].strip()
+                print(Colors.colored(f"  📝 Pseudocode: {user_pseudocode[:80]}{'...' if len(user_pseudocode) > 80 else ''}", Colors.DIM))
+            
             # Parse @file references
             request = parse_file_references(user_input, repo_path)
             
@@ -298,6 +314,7 @@ async def interactive_session(args) -> int:
                 config=config,
                 llm_client=llm_client,
                 verbose=verbose,
+                user_pseudocode=user_pseudocode,
             )
             print()
         

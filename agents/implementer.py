@@ -150,29 +150,49 @@ class ImplementerAgent(BaseAgent):
         # Historian context
         historian = context.prior_context.get("historian", {})
         if historian:
-            sections.append("## Detected Patterns (from Historian)")
-            
+            conventions = historian.get("conventions", {})
             patterns = historian.get("patterns", [])
+            mistakes = historian.get("common_mistakes", [])
+            
+            # ── CRITICAL: Style conventions MUST be followed ──────────
+            # This section is intentionally aggressive because LLMs tend
+            # to ignore mild suggestions and revert to "textbook" style.
+            if conventions or patterns:
+                sections.append("## ⚠️ CRITICAL: Project Style Rules (MANDATORY)")
+                sections.append("You MUST follow these rules exactly. DO NOT use your default style.")
+                sections.append("The code MUST look like it was written by the same developer.")
+                sections.append("")
+            
             if patterns:
+                sections.append("### Detected Code Patterns")
                 for p in patterns[:3]:
-                    sections.append(f"### {p.get('pattern_type', 'Pattern')}")
-                    sections.append(p.get('description', ''))
+                    sections.append(f"**{p.get('pattern_type', 'Pattern')}**: {p.get('description', '')}")
                     if p.get('example_code'):
                         sections.append(f"```\n{p['example_code']}\n```")
             
-            conventions = historian.get("conventions", {})
             if conventions:
-                sections.append("\n### Conventions")
+                sections.append("\n### Style Conventions (DO NOT DEVIATE)")
                 for key, value in conventions.items():
                     sections.append(f"- **{key}**: {value}")
+                
+                # Add explicit anti-pattern warnings for C/C++
+                conv_str = str(conventions).lower()
+                if "using namespace std" in conv_str or "cout" in conv_str:
+                    sections.append("")
+                    sections.append("**⛔ DO NOT use `std::cout`, `std::cin`, `std::endl`.**")
+                    sections.append("**✅ DO use `cout`, `cin`, `endl` (with `using namespace std;`).**")
+                if "snake_case" in conv_str:
+                    sections.append("**⛔ DO NOT use camelCase or PascalCase for variables/functions.**")
+                if "camelCase" in conv_str or "PascalCase" in conv_str:
+                    sections.append("**⛔ DO NOT use snake_case for variables/functions.**")
             
-            mistakes = historian.get("common_mistakes", [])
             if mistakes:
                 sections.append("\n### ⚠️ Common Mistakes to Avoid")
                 for m in mistakes:
                     sections.append(f"- {m}")
             
             sections.append("")
+
         
         # Architect context
         architect = context.prior_context.get("architect", {})
