@@ -47,3 +47,9 @@ logs/
 *.pth
 *.onnx
 *.safetensors
+
+# MACRO workspace (generated artifacts, never commit)
+.contextual-architect/
+**/.contextual-architect/
+chroma.sqlite3
+*.sqlite3
