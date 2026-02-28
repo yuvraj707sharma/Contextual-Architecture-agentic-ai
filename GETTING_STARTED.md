@@ -26,6 +26,7 @@ Download Python 3.10+ from https://www.python.org/downloads/
 Open Command Prompt (cmd) **inside the project folder** (right-click the folder > "Open in Terminal", or use cd):
 
 ```cmd
+pip install --upgrade pip setuptools wheel
 pip install -r requirements.txt
 pip install -e .
 ```
@@ -35,7 +36,9 @@ pip install -e .
 > - Do NOT type `pip install requirements.txt` (missing -r) or `pip install requirement.txt` (missing -r AND missing s)
 > - You must be inside the folder that contains `requirements.txt`. If you get "No such file", type `dir` to check you can see `requirements.txt` in the listing.
 
-After this, the `macro` command works from **anywhere** on your system.
+> WARNING: If `pip install -e .` fails with a setuptools error, you can skip it and use `python -m agents` instead of `macro`. Just make sure to always run from inside the project folder.
+
+After `pip install -e .` succeeds, the `macro` command works from **anywhere** on your system.
 
 ### 1.4 Get Your API Key (Free)
 
