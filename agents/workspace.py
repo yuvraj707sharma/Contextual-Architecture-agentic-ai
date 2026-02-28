@@ -64,6 +64,17 @@ class Workspace:
         """Create workspace directory structure."""
         for subdir in ["discovery", "attempts", "output", "reports"]:
             (self.workspace_path / subdir).mkdir(parents=True, exist_ok=True)
+        
+        # SECURITY: Auto-create .gitignore to prevent accidental commit (VULN-4)
+        gitignore_path = self.workspace_path / ".gitignore"
+        if not gitignore_path.exists():
+            gitignore_path.write_text(
+                "# MACRO workspace — auto-generated, do not commit\n"
+                "# Contains plans, generated code attempts, and reports\n"
+                "*\n"
+                "!.gitignore\n",
+                encoding="utf-8",
+            )
 
     # ── Plan Management ──────────────────────────────────
 
