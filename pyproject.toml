@@ -26,6 +26,7 @@ classifiers = [
 
 dependencies = [
     "httpx>=0.25.0",
+    "google-genai>=1.0.0",
 ]
 
 [project.optional-dependencies]

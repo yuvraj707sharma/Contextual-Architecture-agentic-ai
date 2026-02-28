@@ -1,8 +1,24 @@
+# ============================================================
 # Contextual Architect - Runtime Dependencies
 # Install with: pip install -r requirements.txt
+# ============================================================
+# Python 3.10+ required
 
+# ── CORE (always needed) ─────────────────────────
 # HTTP client for LLM API calls (Groq, OpenAI, Anthropic, DeepSeek, Ollama)
 httpx>=0.25.0
 
-# Google Gemini SDK (for Gemini/Google AI planner)
+# Google Gemini SDK (used for planner agent)
 google-genai>=1.0.0
+
+# ── OPTIONAL: RAG (only if using code retrieval) ──
+# Uncomment these if you want semantic code search:
+# chromadb>=0.4.0
+# sentence-transformers>=2.2.0
+
+# ── OPTIONAL: GitHub PR Search ────────────────────
+# Uncomment if you want to search GitHub PRs for patterns:
+# PyGithub>=2.0
+
+# ── DEV/TEST (only for development) ──────────────
+# See requirements-dev.txt for test dependencies
