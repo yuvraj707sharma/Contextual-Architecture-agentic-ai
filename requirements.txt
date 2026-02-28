@@ -1,5 +1,6 @@
 # ============================================================
-# Contextual Architect - Runtime Dependencies
+# MACRO - Runtime Dependencies
+# Multi-Agent Contextual Repository Orchestrator
 # Install with: pip install -r requirements.txt
 # ============================================================
 # Python 3.10+ required

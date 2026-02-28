@@ -1,4 +1,4 @@
-# Contextual Architect
+# MACRO — Multi-Agent Contextual Repository Orchestrator
 
 > **An AI system that writes production-grade, enterprise-ready code by learning from project evolution and enforcing architectural compliance via multi-agent orchestration.**
 
@@ -12,9 +12,9 @@ Current AI coding tools (Cursor, Copilot, Replit) write code that **works in iso
 
 ## Our Solution
 
-Contextual Architect uses a **7-agent pipeline** that scans your codebase, learns its patterns, plans before generating, and validates before presenting — like having a senior engineer who's been at your company for 10 years.
+MACRO uses a **7-agent pipeline** that scans your codebase, learns its patterns, plans before generating, and validates before presenting — like having a senior engineer who's been at your company for 10 years.
 
-| Existing Tools | Contextual Architect |
+| Existing Tools | MACRO |
 |----------------|---------------------|
 | Isolated code snippets | Full project-aware features |
 | No pattern learning | Learns conventions from your repo |

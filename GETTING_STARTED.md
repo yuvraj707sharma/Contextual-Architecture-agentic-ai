@@ -1,6 +1,6 @@
-# 🏗️ Contextual Architect — Getting Started Guide
+# 🏭 MACRO — Getting Started Guide
 
-> AI-powered code generation that understands your project's style, conventions, and structure.
+> Multi-Agent Contextual Repository Orchestrator — AI-powered code generation that understands your project's style, conventions, and structure.
 
 ---
 

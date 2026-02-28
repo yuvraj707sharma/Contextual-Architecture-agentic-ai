@@ -52,8 +52,9 @@ def print_banner(repo_path: str, provider: str, lang: str, config: AgentConfig):
     """Print the startup banner."""
     print()
     print(Colors.colored("  ╔══════════════════════════════════════════════════╗", Colors.CYAN))
-    print(Colors.colored("  ║", Colors.CYAN) + Colors.colored("  🏗️  CONTEXTUAL ARCHITECT", Colors.BOLD + Colors.WHITE) + Colors.colored("                        ║", Colors.CYAN))
-    print(Colors.colored("  ║", Colors.CYAN) + Colors.colored("  AI-powered enterprise code generation", Colors.DIM + Colors.WHITE) + Colors.colored("           ║", Colors.CYAN))
+    print(Colors.colored("  ║", Colors.CYAN) + Colors.colored("  🏭  MACRO", Colors.BOLD + Colors.WHITE) + Colors.colored("                                    ║", Colors.CYAN))
+    print(Colors.colored("  ║", Colors.CYAN) + Colors.colored("  Multi-Agent Contextual Repository", Colors.DIM + Colors.WHITE) + Colors.colored("       ║", Colors.CYAN))
+    print(Colors.colored("  ║", Colors.CYAN) + Colors.colored("  Orchestrator", Colors.DIM + Colors.WHITE) + Colors.colored("                            ║", Colors.CYAN))
     print(Colors.colored("  ╚══════════════════════════════════════════════════╝", Colors.CYAN))
     print()
     print(Colors.colored("  📁 Repo:     ", Colors.DIM) + Colors.colored(repo_path, Colors.WHITE))

@@ -184,7 +184,7 @@ def print_result(result: OrchestrationResult, orchestrator: Orchestrator, as_jso
 
     print()
     print("=" * 70)
-    print("  CONTEXTUAL ARCHITECT — RESULT")
+    print("  MACRO — RESULT")
     print("=" * 70)
     print()
 
