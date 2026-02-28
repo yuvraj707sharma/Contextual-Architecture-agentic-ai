@@ -73,20 +73,20 @@ def print_banner(repo_path: str, provider: str, lang: str, config: AgentConfig):
     
     # Config
     print(Colors.colored("  \u250c\u2500 Config \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510", Colors.DIM))
-    print(Colors.colored("  \u2502", Colors.DIM) + "  \ud83d\udcc1 Repo:     " + Colors.colored(repo_path, Colors.WHITE))
-    print(Colors.colored("  \u2502", Colors.DIM) + "  \ud83d\udd27 Language: " + Colors.colored(lang, Colors.CYAN))
-    print(Colors.colored("  \u2502", Colors.DIM) + "  \ud83e\udd16 Provider: " + Colors.colored(provider, Colors.GREEN))
+    print(Colors.colored("  \u2502", Colors.DIM) + "  > Repo:     " + Colors.colored(repo_path, Colors.WHITE))
+    print(Colors.colored("  \u2502", Colors.DIM) + "  > Language: " + Colors.colored(lang, Colors.CYAN))
+    print(Colors.colored("  \u2502", Colors.DIM) + "  > Provider: " + Colors.colored(provider, Colors.GREEN))
     if config.planner_provider:
-        print(Colors.colored("  \u2502", Colors.DIM) + "  \ud83e\udde0 Planner:  " + Colors.colored(config.planner_provider, Colors.YELLOW))
+        print(Colors.colored("  \u2502", Colors.DIM) + "  > Planner:  " + Colors.colored(config.planner_provider, Colors.YELLOW))
     if config.implementer_provider:
-        print(Colors.colored("  \u2502", Colors.DIM) + "  \u2699\ufe0f  Implmtr:  " + Colors.colored(config.implementer_provider, Colors.YELLOW))
+        print(Colors.colored("  \u2502", Colors.DIM) + "  > Implmtr:  " + Colors.colored(config.implementer_provider, Colors.YELLOW))
     print(Colors.colored("  \u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518", Colors.DIM))
     print()
     
     # Quick start hints
-    print(Colors.colored("  \ud83d\udcac Chat: ", Colors.CYAN) + Colors.colored("Ask questions about your code", Colors.DIM))
-    print(Colors.colored("  \ud83d\udd28 Build: ", Colors.GREEN) + Colors.colored("Type what you want to build", Colors.DIM))
-    print(Colors.colored("  \ud83d\udccb Help:  ", Colors.YELLOW) + Colors.colored("Type ", Colors.DIM) + Colors.colored("help", Colors.BOLD) + Colors.colored(" for all commands", Colors.DIM))
+    print(Colors.colored("  [?] Chat: ", Colors.CYAN) + Colors.colored("Ask questions about your code", Colors.DIM))
+    print(Colors.colored("  [+] Build: ", Colors.GREEN) + Colors.colored("Type what you want to build", Colors.DIM))
+    print(Colors.colored("  [!] Help:  ", Colors.YELLOW) + Colors.colored("Type ", Colors.DIM) + Colors.colored("help", Colors.BOLD) + Colors.colored(" for all commands", Colors.DIM))
     print()
 
 
@@ -101,26 +101,26 @@ def print_help():
     print(Colors.colored("    config", Colors.CYAN) + "        Show saved config path")
     print(Colors.colored("    clear", Colors.CYAN) + "         Clear the screen")
     print()
-    print(Colors.colored("  💬 Ask Questions (Chat Mode):", Colors.BOLD))
+    print(Colors.colored("  [?] Ask Questions (Chat Mode):", Colors.BOLD))
     print(Colors.colored("  ─────────────────────────────────────", Colors.DIM))
     print("    Ask anything about your code or project:")
-    print(Colors.colored("    ❯", Colors.GREEN) + " What does @Project_1.c do?")
-    print(Colors.colored("    ❯", Colors.GREEN) + " Explain the architecture of this project")
-    print(Colors.colored("    ❯", Colors.GREEN) + " Find bugs in @utils.py")
-    print(Colors.colored("    ❯", Colors.GREEN) + " How does the sorting work in @sort.cpp?")
+    print(Colors.colored("    >", Colors.GREEN) + " What does @Project_1.c do?")
+    print(Colors.colored("    >", Colors.GREEN) + " Explain the architecture of this project")
+    print(Colors.colored("    >", Colors.GREEN) + " Find bugs in @utils.py")
+    print(Colors.colored("    >", Colors.GREEN) + " How does the sorting work in @sort.cpp?")
     print()
-    print(Colors.colored("  🔨 Build Code (Generate Mode):", Colors.BOLD))
+    print(Colors.colored("  [+] Build Code (Generate Mode):", Colors.BOLD))
     print(Colors.colored("  ─────────────────────────────────────", Colors.DIM))
     print("    Type what you want to build in plain English:")
-    print(Colors.colored("    ❯", Colors.GREEN) + " Add user authentication")
-    print(Colors.colored("    ❯", Colors.GREEN) + " Create a linked list implementation")
-    print(Colors.colored("    ❯", Colors.GREEN) + " Add binary search to @sorting.cpp")
+    print(Colors.colored("    >", Colors.GREEN) + " Add user authentication")
+    print(Colors.colored("    >", Colors.GREEN) + " Create a linked list implementation")
+    print(Colors.colored("    >", Colors.GREEN) + " Add binary search to @sorting.cpp")
     print()
-    print(Colors.colored("  File References (@):", Colors.BOLD))
+    print(Colors.colored("  [@] File References:", Colors.BOLD))
     print(Colors.colored("  ─────────────────────────────────────", Colors.DIM))
     print("    Use @ before a filename to modify or ask about an existing file:")
-    print(Colors.colored("    ❯", Colors.GREEN) + " Add booking to @Movie_ticket_pricing.py")
-    print(Colors.colored("    ❯", Colors.GREEN) + " What does @Armstrong.cpp do?")
+    print(Colors.colored("    >", Colors.GREEN) + " Add booking to @Movie_ticket_pricing.py")
+    print(Colors.colored("    >", Colors.GREEN) + " What does @Armstrong.cpp do?")
     print("    Without @, a new file is created (in build mode).")
     print()
     print(Colors.colored("  Pseudocode (|||):", Colors.BOLD))
@@ -715,9 +715,9 @@ async def interactive_session(args) -> int:
             print()
         
         except KeyboardInterrupt:
-            print(Colors.colored(f"\n\n  👋 Session ended. {request_count} requests processed.\n", Colors.DIM))
+            print(Colors.colored(f"\n\n  Session ended. {request_count} requests processed.\n", Colors.DIM))
             return 0
         
         except EOFError:
-            print(Colors.colored(f"\n\n  👋 Session ended. {request_count} requests processed.\n", Colors.DIM))
+            print(Colors.colored(f"\n\n  Session ended. {request_count} requests processed.\n", Colors.DIM))
             return 0

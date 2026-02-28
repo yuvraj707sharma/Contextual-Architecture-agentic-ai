@@ -197,12 +197,12 @@ def print_result(result: OrchestrationResult, orchestrator: Orchestrator, as_jso
         print()
         return
 
-    print(f"  📁 Target File:  {result.target_file}")
-    print(f"  🔄 Attempts:     {result.attempts}")
+    print(f"  > Target File:  {result.target_file}")
+    print(f"  > Attempts:     {result.attempts}")
     print()
 
     # Agent summaries
-    print("  📊 Agent Summaries:")
+    print("  > Agent Summaries:")
     for agent_name, summary in result.agent_summaries.items():
         print(f"     [{agent_name}] {summary}")
     print()
@@ -333,7 +333,7 @@ async def run(args) -> int:
 
     # Print banner
     print()
-    print("🏗️  Contextual Architect")
+    print("MACRO -- Multi-Agent Contextual Repository Orchestrator")
     print(f"   Request:  {args.request}")
     print(f"   Repo:     {repo_path}")
     print(f"   Language: {args.lang}")
