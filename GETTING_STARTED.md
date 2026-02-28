@@ -8,7 +8,12 @@
 
 ### 1.1 Get the Project
 
-Get the project folder from the repo owner (USB, zip, or Git clone).
+Download the zip file and extract it. You should have a folder like:
+```
+Downloads\Contextual-Architecture-agentic-ai-main\Contextual-Architecture-agentic-ai-main\
+```
+
+> NOTE: GitHub zips create a double-nested folder. Make sure you're inside the INNER folder (the one that contains `requirements.txt`, `agents/`, `README.md`).
 
 ### 1.2 Install Python
 
@@ -18,13 +23,17 @@ Download Python 3.10+ from https://www.python.org/downloads/
 
 ### 1.3 Install Dependencies
 
-Open Command Prompt (cmd) and run:
+Open Command Prompt (cmd) **inside the project folder** (right-click the folder > "Open in Terminal", or use cd):
 
 ```cmd
-cd /d E:\FUn\contextual-architect
 pip install -r requirements.txt
 pip install -e .
 ```
+
+> CAUTION: Common mistakes:
+> - The command is `pip install -r requirements.txt` (with `-r` flag and an **s** in requirement**s**)
+> - Do NOT type `pip install requirements.txt` (missing -r) or `pip install requirement.txt` (missing -r AND missing s)
+> - You must be inside the folder that contains `requirements.txt`. If you get "No such file", type `dir` to check you can see `requirements.txt` in the listing.
 
 After this, the `macro` command works from **anywhere** on your system.
 
