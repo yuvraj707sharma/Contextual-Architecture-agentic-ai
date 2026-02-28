@@ -1,0 +1,8 @@
+# Contextual Architect - Runtime Dependencies
+# Install with: pip install -r requirements.txt
+
+# HTTP client for LLM API calls (Groq, OpenAI, Anthropic, DeepSeek, Ollama)
+httpx>=0.25.0
+
+# Google Gemini SDK (for Gemini/Google AI planner)
+google-genai>=1.0.0
