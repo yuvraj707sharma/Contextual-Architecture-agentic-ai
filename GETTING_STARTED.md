@@ -103,7 +103,8 @@ Type your requests naturally:
 ```
   ❯ Add user authentication
   ❯ Add logging to @main.py
-  ❯ Create a REST API endpoint for users
+  ❯ Add binary search to @sorting.cpp
+  ❯ Add factorial ||| 1. Take n 2. Use loop 3. Handle negatives
   ❯ exit
 ```
 
@@ -122,7 +123,11 @@ Type your requests naturally:
 Run one request and exit:
 
 ```cmd
+:: Python project
 python -m agents "Add login system" --repo "C:\my\project" --lang python
+
+:: C++ project
+python -m agents "Add binary search algorithm" --repo "C:\DSA\Basic_Mathematics" --lang cpp
 ```
 
 ---
@@ -136,7 +141,7 @@ Use `@filename` to tell the tool which file to modify:
 ```
 ❯ Add booking feature to @Movie_ticket_pricing.py
 ❯ Fix the bug in @utils/auth.py
-❯ Add error handling to @server.py
+❯ Add prime number checker to @Armstrong.cpp
 ```
 
 This ensures the tool **modifies your file** instead of creating a new one.
@@ -148,6 +153,9 @@ If you don't mention a file, the tool creates a **new file**:
 ```
 ❯ Add sorting algorithm
 → Creates: sorting_algorithm.py (new file)
+
+❯ Add binary search
+→ Creates: binary_search.cpp (new file, if --lang cpp)
 ```
 
 ### Changing The Repo
@@ -168,7 +176,17 @@ python -m agents -i --repo "D:\other\project" --lang python
 
 Pseudocode gives the AI **exact instructions** on what logic to write. This is the most powerful feature — it ensures the AI follows YOUR logic, not its own.
 
-### Inline Pseudocode
+### In Interactive Mode (using `|||`)
+
+Type your request, then `|||`, then the pseudocode:
+
+```
+❯ Add factorial ||| 1. Take n from user 2. Use loop not recursion 3. Handle negative input
+❯ Add GCD and LCM ||| 1. Take two numbers 2. GCD using Euclidean algorithm 3. LCM = (a*b)/GCD
+❯ Add sort to @data.cpp ||| use merge sort, not bubble sort
+```
+
+### In Single-Shot Mode (using `--pseudocode`)
 
 ```cmd
 python -m agents "Add movie booking" --repo "C:\project" --lang python --pseudocode "1. Ask number of tickets 2. Ask seat type premium or regular 3. Premium costs extra $5 4. Calculate total 5. Print receipt"
@@ -258,11 +276,12 @@ Every run produces a result like this:
 
 ### What to Test
 
-1. **Basic requests** — "Add a calculator", "Add login system"
-2. **File modifications** — "Add feature to @existing_file.py"
-3. **With pseudocode** — Use `--pseudocode` to anchor the logic
-4. **Edge cases** — Empty requests, wrong paths, huge inputs
-5. **Code quality** — Does the output match project style?
+1. **Basic requests** — "Add a calculator", "Add factorial function"
+2. **File modifications** — "Add feature to @existing_file.py" or @armstrong.cpp
+3. **With pseudocode** — Use `|||` in interactive or `--pseudocode` in CLI
+4. **Style matching** — Does C++ output use `cout` (not `std::cout`)? Does Python match naming?
+5. **Edge cases** — Empty requests, wrong paths, wrong language flag
+6. **Code quality** — Does the output compile/run correctly?
 
 ### How to Report Issues
 
@@ -287,14 +306,20 @@ Severity:   🟡 Bad UX (not a crash, but wrong behavior)
 ## 📋 Quick Reference
 
 ```cmd
-:: Interactive mode
+:: Interactive mode (Python)
 python -m agents -i --repo "C:\project" --lang python
+
+:: Interactive mode (C++)
+python -m agents -i --repo "C:\DSA\Basic_Mathematics" --lang cpp
 
 :: Single-shot
 python -m agents "Add feature" --repo "C:\project" --lang python
 
-:: With pseudocode
+:: With pseudocode (CLI)
 python -m agents "Add feature" --repo "C:\project" --lang python --pseudocode "1. Do X 2. Do Y"
+
+:: With pseudocode (interactive)
+:: Inside the ❯ prompt, type:  Add feature ||| 1. Do X 2. Do Y
 
 :: Multi-provider
 python -m agents "Add feature" --repo "C:\project" --lang python --planner-provider google
@@ -326,6 +351,58 @@ python -m agents --help
 | Tool creates new file instead of modifying | Use `@filename` in your request |
 | `⛔ BLOCKED: 80% deletion` | The tool protected your file from replacement |
 | Slow response | Groq free tier: 30 req/min. Wait and retry |
+| C++ uses `std::cout` instead of `cout` | Re-check your project has `using namespace std;` in .cpp files |
+| `|||` pseudocode not working | Make sure you're in interactive mode (`-i`) |
+
+---
+
+## 🎯 Real-World Examples (Tested)
+
+### Example 1: C++ — New File
+
+```cmd
+python -m agents -i --repo C:\DSA\Basic_Mathematics --lang cpp
+```
+```
+❯ Add factorial function ||| 1. Take n from user 2. Use loop not recursion 3. Handle negative input
+```
+
+**Result:** Creates `add_factorial_function.cpp` with:
+```cpp
+#include<iostream>         // ✅ Matches project style
+using namespace std;       // ✅ Detected from your files
+
+long long calculateFactorial(int n) {
+    if (n < 0) throw "Error: not defined for negatives";
+    long long factorial = 1;
+    for (int i = 2; i <= n; i++)   // ✅ Loop, not recursion
+        factorial *= i;
+    return factorial;
+}
+
+int main() {
+    int n;
+    cout << "Enter a number: ";  // ✅ cout, not std::cout
+    cin >> n;
+    // ...
+}
+```
+
+### Example 2: C++ — Modify Existing File
+
+```
+❯ Add prime number checker to @Armstrong.cpp
+```
+
+**Result:** Shows a diff preview of changes to `Armstrong.cpp`, preserving all existing code.
+
+### Example 3: Python — New File
+
+```cmd
+python -m agents "Add calculator with add subtract multiply divide" --repo E:\FUn\Learn_Python --lang python
+```
+
+**Result:** Creates `calculator.py` following your project's conventions (naming, style, structure).
 
 ---
 
