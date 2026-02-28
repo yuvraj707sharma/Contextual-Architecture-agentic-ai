@@ -258,16 +258,31 @@ async def run(args) -> int:
         return 1
 
     # Determine provider and API key
+    # Priority: CLI args > env vars > config file
     from .llm_client import detect_provider_from_env
+    
+    # Load saved config as fallback
+    saved_config = AgentConfig.load_user_config()
     
     if args.provider:
         provider = args.provider
         detected_key = args.api_key
     else:
+        # Try env vars first
         provider, detected_key = detect_provider_from_env()
+        # If nothing in env, use saved config
+        if provider == "mock" and saved_config.llm_provider != "mock":
+            provider = saved_config.llm_provider
+            detected_key = saved_config.llm_api_key
     
-    # CLI --api-key flag overrides auto-detected key
-    api_key = args.api_key or detected_key
+    # CLI --api-key flag overrides everything
+    api_key = args.api_key or detected_key or saved_config.llm_api_key
+    
+    # Per-agent providers: CLI args > saved config
+    planner_provider = getattr(args, 'planner_provider', None) or saved_config.planner_provider
+    planner_api_key = saved_config.planner_api_key
+    implementer_provider = getattr(args, 'implementer_provider', None) or saved_config.implementer_provider
+    implementer_api_key = saved_config.implementer_api_key
 
     if provider == "mock":
         logger.warning(
@@ -285,8 +300,10 @@ async def run(args) -> int:
         use_external_tools=not args.no_external_tools,
         log_level="DEBUG" if args.verbose else "INFO",
         log_format="pretty",
-        planner_provider=getattr(args, 'planner_provider', None),
-        implementer_provider=getattr(args, 'implementer_provider', None),
+        planner_provider=planner_provider,
+        planner_api_key=planner_api_key,
+        implementer_provider=implementer_provider,
+        implementer_api_key=implementer_api_key,
     )
 
     # Create LLM client

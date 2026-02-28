@@ -158,14 +158,25 @@ async def interactive_session(args) -> int:
         print(Colors.colored(f"  ❌ Repository path does not exist: {repo_path}", Colors.RED))
         return 1
     
-    # Determine provider
+    # Determine provider — Priority: CLI args > env vars > config file
+    saved_config = AgentConfig.load_user_config()
+    
     if args.provider:
         provider = args.provider
         api_key = args.api_key
     else:
         provider, api_key = detect_provider_from_env()
+        if provider == "mock" and saved_config.llm_provider != "mock":
+            provider = saved_config.llm_provider
+            api_key = saved_config.llm_api_key
     
-    api_key = args.api_key or api_key
+    api_key = args.api_key or api_key or saved_config.llm_api_key
+    
+    # Per-agent providers: CLI args > saved config
+    planner_provider = getattr(args, 'planner_provider', None) or saved_config.planner_provider
+    planner_api_key = saved_config.planner_api_key
+    implementer_provider = getattr(args, 'implementer_provider', None) or saved_config.implementer_provider
+    implementer_api_key = saved_config.implementer_api_key
     
     if provider == "mock":
         print(Colors.colored(
@@ -183,8 +194,10 @@ async def interactive_session(args) -> int:
         use_external_tools=not args.no_external_tools,
         log_level="DEBUG" if args.verbose else "INFO",
         log_format="pretty",
-        planner_provider=getattr(args, 'planner_provider', None),
-        implementer_provider=getattr(args, 'implementer_provider', None),
+        planner_provider=planner_provider,
+        planner_api_key=planner_api_key,
+        implementer_provider=implementer_provider,
+        implementer_api_key=implementer_api_key,
     )
     
     # Create LLM client
