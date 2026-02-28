@@ -1,10 +1,19 @@
-# MACRO — Multi-Agent Contextual Repository Orchestrator
+<p align="center">
+  <img src="assets/macro-logo.png" alt="MACRO Logo" width="200">
+</p>
 
-> **An AI system that writes production-grade, enterprise-ready code by learning from project evolution and enforcing architectural compliance via multi-agent orchestration.**
+<h1 align="center">MACRO</h1>
+<p align="center"><strong>Multi-Agent Contextual Repository Orchestrator</strong></p>
+<p align="center">An AI system that writes production-grade code by learning from your project's evolution, conventions, and architecture.</p>
 
-[![Tests](https://img.shields.io/badge/tests-332%20passing-brightgreen)]()
-[![Python](https://img.shields.io/badge/python-3.10%2B-blue)]()
-[![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
+<p align="center">
+  <a href="#quick-start"><img src="https://img.shields.io/badge/tests-246%20passing-brightgreen" alt="Tests"></a>
+  <a href="#"><img src="https://img.shields.io/badge/python-3.10%2B-blue" alt="Python"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="License: MIT"></a>
+  <a href="#"><img src="https://img.shields.io/badge/agents-7%20specialized-orange" alt="Agents"></a>
+</p>
+
+---
 
 ## The Problem
 

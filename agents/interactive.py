@@ -51,28 +51,42 @@ class Colors:
 def print_banner(repo_path: str, provider: str, lang: str, config: AgentConfig):
     """Print the startup banner."""
     print()
-    print(Colors.colored("  ╔══════════════════════════════════════════════════╗", Colors.CYAN))
-    print(Colors.colored("  ║", Colors.CYAN) + Colors.colored("  🏭  MACRO", Colors.BOLD + Colors.WHITE) + Colors.colored("                                    ║", Colors.CYAN))
-    print(Colors.colored("  ║", Colors.CYAN) + Colors.colored("  Multi-Agent Contextual Repository", Colors.DIM + Colors.WHITE) + Colors.colored("       ║", Colors.CYAN))
-    print(Colors.colored("  ║", Colors.CYAN) + Colors.colored("  Orchestrator", Colors.DIM + Colors.WHITE) + Colors.colored("                            ║", Colors.CYAN))
-    print(Colors.colored("  ╚══════════════════════════════════════════════════╝", Colors.CYAN))
+    # ASCII brain logo — represents the multi-agent orchestrator
+    print(Colors.colored("      \u256d\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256e", Colors.RED))
+    print(Colors.colored("      \u2502", Colors.RED) + Colors.colored("  \u2e3b\u2022\u2500\u2500\u2022\u2e3b  ", Colors.YELLOW) + Colors.colored("\u2502", Colors.RED))
+    print(Colors.colored("      \u2502", Colors.RED) + Colors.colored(" \u2502\u256d\u2500\u256e\u2570\u256e\u256d\u2502 ", Colors.YELLOW) + Colors.colored("\u2502", Colors.RED) + Colors.colored("  MACRO", Colors.BOLD + Colors.WHITE))
+    print(Colors.colored("      \u2502", Colors.RED) + Colors.colored("  \u2570\u2500\u256e\u256d\u2500\u256f  ", Colors.YELLOW) + Colors.colored("\u2502", Colors.RED) + Colors.colored("  Multi-Agent Contextual Repository Orchestrator", Colors.DIM))
+    print(Colors.colored("      \u2502", Colors.RED) + Colors.colored("   \u2570\u256f    ", Colors.YELLOW) + Colors.colored("\u2502", Colors.RED))
+    print(Colors.colored("      \u2570\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256f", Colors.RED))
     print()
-    print(Colors.colored("  📁 Repo:     ", Colors.DIM) + Colors.colored(repo_path, Colors.WHITE))
-    print(Colors.colored("  🔧 Language: ", Colors.DIM) + Colors.colored(lang, Colors.WHITE))
-    print(Colors.colored("  🤖 Provider: ", Colors.DIM) + Colors.colored(provider, Colors.GREEN))
     
+    # Agent pipeline visualization
+    print(Colors.colored("  Agents: ", Colors.DIM) + 
+          Colors.colored("\u25c9 ", Colors.BLUE) + Colors.colored("Historian", Colors.DIM) +
+          Colors.colored(" \u2192 ", Colors.DIM) +
+          Colors.colored("\u25c9 ", Colors.MAGENTA) + Colors.colored("Planner", Colors.DIM) +
+          Colors.colored(" \u2192 ", Colors.DIM) +
+          Colors.colored("\u25c9 ", Colors.GREEN) + Colors.colored("Implementer", Colors.DIM) +
+          Colors.colored(" \u2192 ", Colors.DIM) +
+          Colors.colored("\u25c9 ", Colors.RED) + Colors.colored("Reviewer", Colors.DIM))
+    print()
+    
+    # Config
+    print(Colors.colored("  \u250c\u2500 Config \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510", Colors.DIM))
+    print(Colors.colored("  \u2502", Colors.DIM) + "  \ud83d\udcc1 Repo:     " + Colors.colored(repo_path, Colors.WHITE))
+    print(Colors.colored("  \u2502", Colors.DIM) + "  \ud83d\udd27 Language: " + Colors.colored(lang, Colors.CYAN))
+    print(Colors.colored("  \u2502", Colors.DIM) + "  \ud83e\udd16 Provider: " + Colors.colored(provider, Colors.GREEN))
     if config.planner_provider:
-        print(Colors.colored("  🧠 Planner:  ", Colors.DIM) + Colors.colored(config.planner_provider, Colors.YELLOW))
+        print(Colors.colored("  \u2502", Colors.DIM) + "  \ud83e\udde0 Planner:  " + Colors.colored(config.planner_provider, Colors.YELLOW))
     if config.implementer_provider:
-        print(Colors.colored("  ⚙️  Implmtr:  ", Colors.DIM) + Colors.colored(config.implementer_provider, Colors.YELLOW))
+        print(Colors.colored("  \u2502", Colors.DIM) + "  \u2699\ufe0f  Implmtr:  " + Colors.colored(config.implementer_provider, Colors.YELLOW))
+    print(Colors.colored("  \u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518", Colors.DIM))
+    print()
     
-    print()
-    print(Colors.colored("  Type your request, or use these commands:", Colors.DIM))
-    print(Colors.colored("    help", Colors.CYAN) + Colors.colored("      — show all commands and features", Colors.DIM))
-    print(Colors.colored("    exit", Colors.CYAN) + Colors.colored("      — quit the session", Colors.DIM))
-    print(Colors.colored("    @file.py", Colors.CYAN) + Colors.colored("   — reference a file in your request", Colors.DIM))
-    print()
-    print(Colors.colored("  Supported: ", Colors.DIM) + Colors.colored("python │ cpp │ c │ go │ typescript │ javascript │ java", Colors.WHITE))
+    # Quick start hints
+    print(Colors.colored("  \ud83d\udcac Chat: ", Colors.CYAN) + Colors.colored("Ask questions about your code", Colors.DIM))
+    print(Colors.colored("  \ud83d\udd28 Build: ", Colors.GREEN) + Colors.colored("Type what you want to build", Colors.DIM))
+    print(Colors.colored("  \ud83d\udccb Help:  ", Colors.YELLOW) + Colors.colored("Type ", Colors.DIM) + Colors.colored("help", Colors.BOLD) + Colors.colored(" for all commands", Colors.DIM))
     print()
 
 
