@@ -1,4 +1,4 @@
-# Contextual Architect: Multi-Agent Orchestration with Retrieval-Augmented Generation for Repository-Aware Code Generation
+# MACRO: Multi-Agent Contextual Repository Orchestrator with Retrieval-Augmented Generation for Repository-Aware Code Generation
 
 **Yuvraj Sharma**
 Department of Computer Science and Engineering
@@ -9,7 +9,7 @@ Email: yuvraj.24bcon0785@jecrcu.edu.in
 
 ## Abstract
 
-Large Language Models (LLMs) generate syntactically correct code but frequently violate repository-specific architectural patterns, naming conventions, and security constraints. We present **Contextual Architect**, a multi-agent orchestration system that addresses this *Integration Gap* — the disconnect between generated code and the conventions of the target codebase. Our system decomposes code generation into seven specialized agents (Historian, Architect, Planner, Alignment Checker, Implementer, Reviewer, and Test Generator) coordinated by a finite-state orchestrator. We introduce a Retrieval-Augmented Generation (RAG) layer that indexes target repositories using AST-aware code chunking and ChromaDB vector search, providing semantically relevant code examples to agents at inference time. A constraint-based security enforcement mechanism implements CWE denylist checks as a post-generation validation gate. We evaluate our system on a FastAPI benchmark (44 files, 174 code chunks) across three tasks of increasing complexity. With RAG enabled, the system achieves **100% constraint compliance (32/32 checks)**, a 2.07x speedup over the baseline (41.5s vs. 85.8s), and eliminates a CWE-89 security anti-pattern by grounding generation in the repository's existing ORM patterns. Our evaluation harness, comprising 332 automated tests across four test suites, demonstrates reproducible results. The system supports seven LLM providers and degrades gracefully when optional components (ChromaDB, sentence-transformers) are unavailable.
+Large Language Models (LLMs) generate syntactically correct code but frequently violate repository-specific architectural patterns, naming conventions, and security constraints. We present **MACRO (Multi-Agent Contextual Repository Orchestrator)**, a multi-agent orchestration system that addresses this *Integration Gap* — the disconnect between generated code and the conventions of the target codebase. Our system decomposes code generation into nine specialized agents (Historian, Architect, Style Fingerprint, Planner, Alignment Checker, Implementer, Reviewer, Test Generator, and Feedback Reader) coordinated by a finite-state orchestrator, accessible through a dual-mode interactive CLI supporting both conversational Q&A and pipelined code generation. We introduce a Retrieval-Augmented Generation (RAG) layer that indexes target repositories using AST-aware code chunking and ChromaDB vector search, providing semantically relevant code examples to agents at inference time. A constraint-based security enforcement mechanism implements CWE denylist checks as a post-generation validation gate, complemented by a runtime security hardening layer that prevents path traversal attacks, masks API credentials, enforces input length limits, and guards against prompt injection. We evaluate our system on a FastAPI benchmark (44 files, 174 code chunks) across three tasks of increasing complexity. Without RAG, the system achieves **96.9% constraint compliance (31/32 checks)**; with RAG enabled, it achieves **100% (32/32)**, a 2.07x speedup (41.5s vs. 85.8s), and elimination of CWE-89 security anti-patterns by grounding generation in the repository's existing ORM patterns. Our test infrastructure comprises 246 unit tests covering all 9 agents, 25 E2E contract tests, and 31 RAG/storage tests, all passing. The system supports seven LLM providers and degrades gracefully when optional components (ChromaDB, sentence-transformers) are unavailable.
 
 **Keywords**: Multi-agent systems, code generation, retrieval-augmented generation, software engineering, constraint enforcement, large language models
 
@@ -23,7 +23,7 @@ We term this the **Integration Gap**: the difference between code that compiles 
 
 This gap has measurable consequences. Pearce et al. [3] found that approximately 40% of GitHub Copilot's suggestions contain security vulnerabilities traceable to specific CWE categories. Commercial tools provide no explicit enforcement mechanism — they rely on the LLM's training-time behavior rather than runtime constraint checking.
 
-We present **Contextual Architect**, a system designed to close the Integration Gap through three mechanisms:
+We present **MACRO**, a system designed to close the Integration Gap through four mechanisms:
 
 1. **Multi-agent decomposition**: Seven specialized agents, each with constrained responsibilities, process code generation tasks in a defined pipeline. This prevents any single agent from simultaneously navigating architecture, security, and implementation decisions.
 
@@ -31,7 +31,9 @@ We present **Contextual Architect**, a system designed to close the Integration 
 
 3. **Constraint-based security enforcement**: A post-generation Reviewer agent checks generated code against a CWE denylist (CWE-89, CWE-502, CWE-78) and validates structural compliance. This provides runtime guarantees that training-time safety cannot.
 
-While each of these mechanisms draws on established techniques, their combination is novel. Prior multi-agent systems (ChatDev [4], MetaGPT [5]) target greenfield projects and lack repository awareness. Systems that target existing repositories (SWE-agent [12], AutoCodeRover [13]) use single-agent architectures without explicit security enforcement. RAG has been applied to code review comment generation [8] but not to code generation with AST-aware chunking. Security benchmarks (Pearce et al. [3]) identify the vulnerability problem but propose no enforcement mechanism. OctoBench [7] measures the constraint compliance gap but does not solve it. Contextual Architect is the first system to address the Integration Gap by combining all three mechanisms — multi-agent orchestration, repository-grounded AST-aware RAG, and runtime CWE enforcement — in a single pipeline targeting existing codebases.
+4. **Runtime security hardening**: Path traversal prevention, API credential masking, input length enforcement, and prompt injection guards protect the system itself from adversarial inputs.
+
+While each of these mechanisms draws on established techniques, their combination is novel. Prior multi-agent systems (ChatDev [4], MetaGPT [5]) target greenfield projects and lack repository awareness. Systems that target existing repositories (SWE-agent [12], AutoCodeRover [13]) use single-agent architectures without explicit security enforcement. RAG has been applied to code review comment generation [8] but not to code generation with AST-aware chunking. Security benchmarks (Pearce et al. [3]) identify the vulnerability problem but propose no enforcement mechanism. OctoBench [7] measures the constraint compliance gap but does not solve it. MACRO is the first system to address the Integration Gap by combining all four mechanisms — multi-agent orchestration, repository-grounded AST-aware RAG, runtime CWE enforcement, and system-level security hardening — in a single pipeline targeting existing codebases.
 
 Our primary claim is that the combination of multi-agent orchestration and repository-specific RAG produces measurably more compliant code than single-shot LLM generation. We support this claim with a controlled before/after evaluation on a FastAPI benchmark, showing that RAG eliminates a CWE-89 false positive, improves file naming accuracy, and reduces total pipeline time by 51.6%.
 
@@ -88,7 +90,7 @@ Table I summarizes the key differences between our system and related work.
 
 ### A. Overview
 
-Contextual Architect processes each code generation request through a pipeline of seven agents coordinated by a finite-state orchestrator (Fig. 1). The pipeline operates on a shared `AgentContext` object that accumulates information as it passes through each stage.
+MACRO processes each code generation request through a pipeline of nine agents coordinated by a finite-state orchestrator (Fig. 1). The pipeline operates on a shared `AgentContext` object that accumulates information as it passes through each stage. An interactive CLI provides dual-mode access: conversational Q&A (chat mode) and full pipeline code generation (build mode), with intent detection automatically routing user input to the appropriate mode.
 
 ```
 User Request
@@ -137,7 +139,7 @@ User Request
    Generated Code + Tests
 ```
 
-*Fig. 1: Contextual Architect pipeline architecture. Historian and Architect run in parallel during the discovery phase. The Implementer-Reviewer loop provides self-correction.*
+*Fig. 1: MACRO pipeline architecture. Historian, Architect, and Style Fingerprint run in parallel during the discovery phase. The Implementer-Reviewer loop provides self-correction.*
 
 ### B. Agent Descriptions
 
@@ -161,13 +163,26 @@ User Request
 
 **Test Generator Agent.** Produces pytest test cases for the generated code, ensuring testability. Tests are placed in the repository's existing test directory structure.
 
-### C. Orchestrator Design
+**Style Fingerprint Agent.** Scans all code files to extract fine-grained style metrics: function/class naming conventions, indentation patterns (spaces vs tabs, indent size), maximum line length (95th percentile), error handling style, logging library, and test framework. Produces a structured `StyleFingerprint` that constrains the Implementer's output to match the repository's established style.
+
+**Feedback Reader Agent.** Reads historical feedback from past generation runs within the workspace. This enables the system to accumulate knowledge across multiple invocations for the same repository, avoiding repeated mistakes.
+
+### C. Interactive CLI with Dual-Mode Operation
+
+The interactive CLI (`interactive.py`) provides two modes:
+
+1. **Chat Mode**: For informational queries about the repository. The system collects relevant file contents using safe path resolution (preventing directory traversal attacks) and generates responses via the LLM with prompt injection guards.
+2. **Build Mode**: For code generation requests. Executes the full nine-agent pipeline. Supports optional pseudocode specification via `|||` delimiter, with post-generation alignment verification.
+
+Intent detection classifies user input automatically using keyword and pattern analysis, routing to the appropriate mode without explicit user specification.
+
+### D. Orchestrator Design
 
 The Orchestrator implements a finite-state machine with the following states: `start -> parallel_discovery -> planner -> alignment -> implementer_attempt_N -> reviewer_attempt_N -> test_generator -> safe_writer -> complete`. State transitions are logged with timestamps, enabling performance profiling.
 
 Key design decisions:
 
-1. **Parallel discovery**: Historian and Architect run concurrently, reducing discovery time.
+1. **Parallel discovery**: Historian, Architect, and Style Fingerprint run concurrently, reducing discovery time.
 2. **Filesystem-as-memory**: All intermediate outputs (style.json, historian.json, plan.md) are written to a `.contextual-architect/` workspace directory. This provides persistence across retries and debugging visibility.
 3. **Graceful degradation**: If ChromaDB is not installed, the system operates without RAG. If the LLM API fails, heuristic fallbacks activate. No single dependency failure crashes the pipeline.
 4. **Context budgeting**: Each agent's prompt is constructed within a token budget to avoid exceeding the LLM's context window. Repository context from RAG is truncated using a priority-based system: security-relevant patterns are prioritized over stylistic conventions, and recent files are weighted above older ones. This addresses the "lost in the middle" phenomenon [14], where LLMs disproportionately attend to the beginning and end of long prompts, by placing the most critical context — security constraints and the user's request — at prompt boundaries.
@@ -250,6 +265,19 @@ Constraints are enforced at two layers:
 
 This defense-in-depth approach means that even if the LLM ignores the prompt-time constraints, the review-time check catches violations before code reaches the user.
 
+### D. Runtime Security Hardening
+
+Beyond CWE enforcement on generated code, MACRO implements system-level security hardening:
+
+| Threat | Mitigation |
+|---|---|
+| Path traversal via `@../../etc/passwd` | `_is_safe_path()` resolves all file references against the repo root and rejects any path escaping the boundary |
+| API key exposure in config files | `save_to_file()` masks keys to first4 + `****` + last4 before writing |
+| Denial of service via oversized input | Input length capped at 10,000 characters |
+| Prompt injection via malicious repo files | System prompt includes explicit instruction to ignore adversarial content in code context |
+| Workspace data leakage | Auto-creates `.gitignore` with `*` rule in workspace directory |
+| Config file permissions | Sets `chmod 0o600` (owner-only) on Unix systems |
+
 ---
 
 ## VI. Evaluation
@@ -307,11 +335,10 @@ Table IV summarizes our automated test infrastructure.
 
 | Test Suite | Tests | Coverage |
 |-----------|-------|----------|
-| Agent unit tests | 245 | All 7 agents + orchestrator + workspace |
+| Agent unit tests | 246 | All 9 agents + orchestrator + workspace |
 | RAG + Storage | 31 | Chunker, vector store, retriever, indexer, SQLite |
 | E2E contract tests | 25 | Historian/Architect/Implementer/Reviewer contracts |
-| Output validator | 31 | JSON extraction, verdict integrity, security checks |
-| **Total** | **332** | **100% pass rate** |
+| **Total** | **302** | **100% pass rate** |
 
 *Table IV: Automated test suite composition.*
 
@@ -349,7 +376,7 @@ These differences are complementary rather than competitive — our constraint e
 
 ### C. Novelty Contribution Matrix
 
-Table V maps each open problem identified in prior work to the corresponding mechanism in Contextual Architect.
+Table V maps each open problem identified in prior work to the corresponding mechanism in MACRO.
 
 | Open Problem | Identified By | Our Solution |
 |---|---|---|
@@ -361,7 +388,7 @@ Table V maps each open problem identified in prior work to the corresponding mec
 | RAG explored only for review comments | Pornprasit et al. [8] | RAG for code **generation** with code-specific chunks |
 | Security enforcement is domain-locked (IaC) | MACOG [6] | General-purpose CWE enforcement for any language |
 
-*Table V: Mapping of open problems in prior work to novel contributions in Contextual Architect.*
+*Table V: Mapping of open problems in prior work to novel contributions in MACRO.*
 
 ### D. Architectural Decisions
 
@@ -373,7 +400,7 @@ Table V maps each open problem identified in prior work to the corresponding mec
 
 ## VIII. Conclusion and Future Work
 
-We presented Contextual Architect, a multi-agent system for repository-aware code generation that addresses the Integration Gap between LLM-generated code and existing codebase conventions. Through seven specialized agents, AST-aware RAG, and CWE denylist enforcement, the system achieves 100% constraint compliance on a FastAPI benchmark while providing a 2.07x speedup (51.6% reduction) over the non-RAG baseline.
+We presented MACRO (Multi-Agent Contextual Repository Orchestrator), a multi-agent system for repository-aware code generation that addresses the Integration Gap between LLM-generated code and existing codebase conventions. Through nine specialized agents, an interactive dual-mode CLI, AST-aware RAG, CWE denylist enforcement, and runtime security hardening, the system achieves 100% constraint compliance on a FastAPI benchmark while providing a 2.07x speedup (51.6% reduction) over the non-RAG baseline.
 
 Our evaluation demonstrates that repository-specific retrieval eliminates security anti-patterns (CWE-89), enables code reuse of existing utilities (DRY principle), and produces descriptive file naming — all measurable improvements over context-free generation.
 

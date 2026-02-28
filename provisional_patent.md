@@ -8,6 +8,8 @@
 
 **Method and System for Multi-Agent Codebase-Aware Code Generation with Retrieval-Augmented Architectural Compliance**
 
+*Product Name: MACRO (Multi-Agent Contextual Repository Orchestrator)*
+
 ---
 
 ## APPLICANT
@@ -54,11 +56,11 @@ The system achieves measurably higher compliance with repository conventions and
 
 ### 1. System Overview
 
-The invention comprises a software system that processes code generation requests through a pipeline of seven (7) specialized agents coordinated by a finite-state orchestrator. The agents operate on a shared context object that accumulates repository-specific information as it passes through each pipeline stage.
+The invention comprises a software system that processes code generation requests through a pipeline of nine (9) specialized agents coordinated by a finite-state orchestrator, exposed via an interactive command-line interface with dual-mode operation (conversational Q&A and code generation). The agents operate on a shared context object that accumulates repository-specific information as it passes through each pipeline stage.
 
 ### 2. Agent Pipeline Architecture (Claim 1)
 
-The pipeline consists of the following specialized agents executed in a defined order:
+The pipeline consists of the following nine (9) specialized agents executed in a defined order:
 
 **a) Historian Agent:** Performs heuristic filesystem analysis of the target repository to identify coding patterns including naming conventions (snake_case, camelCase), import patterns, error handling styles, and framework-specific idioms. When the retrieval subsystem is available, the Historian additionally performs semantic vector search to discover historically similar implementations, merging heuristic and semantic results into a unified context with confidence scores.
 
@@ -74,7 +76,11 @@ The pipeline consists of the following specialized agents executed in a defined 
 
 **g) Test Generator Agent:** Produces automated test cases for the generated code, ensuring testability and placing tests in the repository's existing test directory structure.
 
-**Key novelty:** The parallel execution of discovery agents (Historian and Architect) combined with the sequential execution of planning, generation, and validation agents creates a pipeline that balances information gathering efficiency with generation quality control. No prior system implements this specific combination of parallel discovery with sequential generation and validation for existing repositories.
+**h) Style Fingerprint Agent:** Extracts detailed code style patterns including naming conventions, indentation style, logging library usage, error handling patterns, and test framework preferences. These constraints are injected into the Implementer's prompt.
+
+**i) Feedback Reader Agent:** Reads historical feedback from past generation runs, enabling the system to learn from previous successes and failures for the same repository.
+
+**Key novelty:** The parallel execution of discovery agents (Historian, Architect, and Style Fingerprint) combined with the sequential execution of planning, generation, and validation agents creates a pipeline that balances information gathering efficiency with generation quality control. No prior system implements this specific combination of parallel discovery with sequential generation and validation for existing repositories.
 
 ### 3. AST-Aware Code Chunking for Retrieval-Augmented Generation (Claim 2)
 
@@ -205,16 +211,30 @@ The system operates at full capability when all dependencies are available, but 
 - (d) skipping unchanged files to achieve sub-second re-indexing time.
 
 **7.** A system for code generation within existing software repositories that degrades gracefully when optional components are unavailable, comprising:
-- (a) a multi-agent pipeline that operates with or without a vector database for retrieval augmentation;
+- (a) a multi-agent pipeline of nine (9) specialized agents that operates with or without a vector database for retrieval augmentation;
 - (b) an embedding subsystem with a multi-strategy fallback chain;
 - (c) a pipeline that continues execution using heuristic fallback values when the LLM API is unavailable;
 - wherein no single optional component failure prevents the system from producing a code generation result.
+
+**8.** A method for interactive code generation providing dual-mode operation, comprising:
+- (a) receiving user input through a command-line interface;
+- (b) classifying user intent as either "chat" (informational query) or "build" (code generation request) using keyword-based and pattern-based detection;
+- (c) for chat intents, collecting relevant file contents from the repository using safe path resolution that prevents directory traversal attacks, and generating a response using an LLM with prompt injection guards;
+- (d) for build intents, executing the full multi-agent pipeline of Claim 1;
+- (e) if the user's input contains pseudocode delimited by a separator token, verifying that the generated code implements each pseudocode step through keyword mapping and pattern analysis.
+
+**9.** A method for hardening an LLM-based code generation system against security threats, comprising:
+- (a) resolving all user-provided file path references against the repository root directory and rejecting any resolved path that falls outside the repository boundary (preventing path traversal attacks);
+- (b) masking API credentials before persisting configuration to storage, retaining only the first and last four characters of each key;
+- (c) enforcing a maximum input length to prevent resource exhaustion;
+- (d) including explicit prompt injection detection instructions in the LLM system prompt, instructing the model to ignore adversarial instructions embedded in user-provided code files;
+- (e) automatically creating filesystem-level exclusion rules in the workspace directory to prevent accidental disclosure of intermediate outputs.
 
 ---
 
 ## ABSTRACT
 
-A method and system for generating code within existing software repositories using a pipeline of specialized agents coordinated by a finite-state orchestrator. The system addresses the "Integration Gap" between LLM-generated code and existing codebase conventions through three mechanisms: (1) a seven-agent pipeline (Historian, Architect, Planner, Alignment Checker, Implementer, Reviewer, Test Generator) with parallel discovery and sequential generation; (2) a retrieval-augmented generation layer that indexes repositories using Abstract Syntax Tree-aware code chunking at function and class boundaries, stored in a vector database with incremental indexing; and (3) a two-layer CWE denylist enforcement mechanism combining prompt-time prevention with review-time detection and automated retry. Evaluation on a FastAPI benchmark demonstrates 100% constraint compliance (32/32 checks) and a 51.6% reduction in total generation time compared to the non-RAG baseline.
+A method and system (MACRO — Multi-Agent Contextual Repository Orchestrator) for generating code within existing software repositories using a pipeline of nine specialized agents coordinated by a finite-state orchestrator, accessible through a dual-mode interactive CLI supporting both conversational Q&A and pipelined code generation. The system addresses the "Integration Gap" between LLM-generated code and existing codebase conventions through four mechanisms: (1) a nine-agent pipeline (Historian, Architect, Style Fingerprint, Planner, Alignment Checker, Implementer, Reviewer, Test Generator, Feedback Reader) with parallel discovery and sequential generation; (2) a retrieval-augmented generation layer that indexes repositories using Abstract Syntax Tree-aware code chunking at function and class boundaries, stored in a vector database with incremental indexing; (3) a two-layer CWE denylist enforcement mechanism combining prompt-time prevention with review-time detection and automated retry; and (4) a security hardening layer providing path traversal prevention, API credential masking, input length enforcement, and prompt injection guards. Evaluation on a FastAPI benchmark demonstrates 96.9% constraint compliance (31/32 checks) without RAG and 100% (32/32) with RAG enabled, and a 51.6% reduction in total generation time.
 
 ---
 
