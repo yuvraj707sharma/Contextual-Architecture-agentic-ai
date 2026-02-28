@@ -480,6 +480,11 @@ class HistorianAgent(BaseAgent):
         # Detect import style (sample from files)
         conventions["imports"] = self._detect_import_style(repo_path, context.language)
         
+        # ── C/C++ specific style detection ───────────────────
+        if context.language in ("cpp", "c"):
+            cpp_style = self._detect_cpp_style(repo_path, context.language)
+            conventions.update(cpp_style)
+        
         # ── GUARDRAIL: Framework/library detection ─────────────
         # When no patterns exist (no git history), scan imports to
         # identify what frameworks the project uses. This prevents
@@ -674,7 +679,82 @@ class HistorianAgent(BaseAgent):
                 except:
                     pass
         
+        if language in ("cpp", "c"):
+            # Detect #include style: <brackets> vs "quotes"
+            for f in list(repo_path.rglob("*.cpp"))[:5] + list(repo_path.rglob("*.c"))[:5]:
+                try:
+                    content = f.read_text(encoding='utf-8', errors='ignore')
+                    if 'using namespace std;' in content:
+                        return "using namespace std; (direct cout/cin)"
+                except:
+                    continue
+            return "std:: prefix style"
+        
         return "standard"
+    
+    def _detect_cpp_style(self, repo_path: "Path", language: str) -> dict:
+        """
+        Detect C/C++ specific style conventions by scanning project files.
+        
+        This is critical because LLMs default to 'textbook' C++ (std::cout)
+        but most student/DSA projects use 'using namespace std;' + cout.
+        """
+        from pathlib import Path
+        
+        style = {}
+        ext = "*.cpp" if language == "cpp" else "*.c"
+        
+        # Scan up to 10 files
+        uses_namespace_std = 0
+        uses_std_prefix = 0
+        brace_same_line = 0
+        brace_next_line = 0
+        total_files = 0
+        sample_includes = []
+        
+        for f in list(repo_path.rglob(ext))[:10]:
+            if '.contextual-architect' in str(f):
+                continue
+            try:
+                content = f.read_text(encoding='utf-8', errors='ignore')
+                total_files += 1
+                
+                # Detect namespace usage
+                if 'using namespace std;' in content:
+                    uses_namespace_std += 1
+                if 'std::cout' in content or 'std::cin' in content:
+                    uses_std_prefix += 1
+                
+                # Detect brace style
+                if '){' in content.replace(' ', '') or ') {' in content:
+                    brace_same_line += 1
+                
+                # Collect #include patterns
+                for line in content.split('\n')[:10]:
+                    if line.strip().startswith('#include'):
+                        sample_includes.append(line.strip())
+                
+            except Exception:
+                continue
+        
+        if total_files == 0:
+            return style
+        
+        # Namespace style
+        if uses_namespace_std > 0:
+            style["namespace_style"] = (
+                "Uses 'using namespace std;' — use cout, cin, endl directly. "
+                "DO NOT use std::cout or std::cin."
+            )
+        elif uses_std_prefix > 0:
+            style["namespace_style"] = "Uses std:: prefix (std::cout, std::cin)"
+        
+        # Include style from samples
+        if sample_includes:
+            unique_includes = list(set(sample_includes))[:5]
+            style["include_style"] = f"Example includes: {'; '.join(unique_includes)}"
+        
+        return style
     
     async def _enhance_with_llm(
         self, 
