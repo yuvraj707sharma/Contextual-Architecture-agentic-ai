@@ -3,7 +3,7 @@ CLI entry point for Contextual Architect.
 
 Usage:
     python -m agents "Add JWT authentication middleware" --repo ./myproject --lang python
-    python -m agents "Add health check endpoint" --repo /path/to/repo --lang go
+    python -m agents -i --repo ./myproject --lang python  # interactive mode
     python -m agents --help
 """
 
@@ -28,26 +28,26 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Generate code using DeepSeek (cheapest)
-  export DEEPSEEK_API_KEY=sk-...
+  # Single-shot mode
   python -m agents "Add JWT auth middleware" --repo ./myproject --lang python
 
-  # Generate code using Claude (best quality)
-  export ANTHROPIC_API_KEY=sk-ant-...
-  python -m agents "Add caching layer" --repo ./myproject --lang go --provider anthropic
+  # Multi-provider (Gemini for planning, Groq for fast agents)
+  python -m agents "Add caching" --repo ./myproject --provider groq --planner-provider google
 
-  # Generate code using local Ollama (free)
-  python -m agents "Add logging" --repo ./myproject --lang python --provider ollama
+  # Interactive chat mode
+  python -m agents -i --repo ./myproject --lang python
 
-  # Dry run (no LLM, placeholder code)
-  python -m agents "Add user service" --repo ./myproject --lang python --provider mock
+  # Save config for reuse
+  python -m agents --save-config --provider groq --planner-provider google
         """,
     )
 
-    # Positional argument: the user request
+    # Positional argument: the user request (optional for interactive mode)
     parser.add_argument(
         "request",
         type=str,
+        nargs="?",
+        default=None,
         help='What you want to build (e.g., "Add JWT authentication middleware")',
     )
 
@@ -72,7 +72,7 @@ Examples:
         type=str,
         default=None,
         choices=["groq", "deepseek", "openai", "anthropic", "google", "ollama", "mock"],
-        help="LLM provider (default: auto-detect from env vars)",
+        help="Default LLM provider (default: auto-detect from env vars)",
     )
     parser.add_argument(
         "--model", "-m",
@@ -87,6 +87,22 @@ Examples:
         help="API key (alternative to environment variable)",
     )
 
+    # Per-agent provider routing
+    parser.add_argument(
+        "--planner-provider",
+        type=str,
+        default=None,
+        choices=["groq", "deepseek", "openai", "anthropic", "google", "ollama"],
+        help="LLM provider for Planner + Alignment agents (e.g., google for Gemini)",
+    )
+    parser.add_argument(
+        "--implementer-provider",
+        type=str,
+        default=None,
+        choices=["groq", "deepseek", "openai", "anthropic", "google", "ollama"],
+        help="LLM provider for Implementer + Test Generator agents",
+    )
+
     # Pipeline configuration
     parser.add_argument(
         "--pseudocode", "--pseudo",
@@ -95,7 +111,7 @@ Examples:
         help=(
             'User-provided pseudocode to anchor code generation. '
             'Can be inline text or a path to a .txt/.md file. '
-            'Example: --pseudocode "1. Check auth header\n2. Decode JWT\n3. Attach user"'
+            'Example: --pseudocode "1. Check auth header\\n2. Decode JWT\\n3. Attach user"'
         ),
     )
     parser.add_argument(
@@ -108,6 +124,18 @@ Examples:
         "--no-external-tools",
         action="store_true",
         help="Disable external linters (ruff, mypy, golangci-lint)",
+    )
+
+    # Interactive mode
+    parser.add_argument(
+        "--interactive", "-i",
+        action="store_true",
+        help="Start interactive chat session",
+    )
+    parser.add_argument(
+        "--save-config",
+        action="store_true",
+        help="Save current CLI settings to ~/.contextual-architect/config.json",
     )
 
     # Output configuration
@@ -257,6 +285,8 @@ async def run(args) -> int:
         use_external_tools=not args.no_external_tools,
         log_level="DEBUG" if args.verbose else "INFO",
         log_format="pretty",
+        planner_provider=getattr(args, 'planner_provider', None),
+        implementer_provider=getattr(args, 'implementer_provider', None),
     )
 
     # Create LLM client
@@ -337,6 +367,31 @@ def main():
     parser = build_parser()
     args = parser.parse_args()
 
+    # Handle --save-config
+    if args.save_config:
+        from .llm_client import detect_provider_from_env
+        provider = args.provider
+        if not provider:
+            provider, _ = detect_provider_from_env()
+        config = AgentConfig(
+            llm_provider=provider or "mock",
+            llm_model=args.model,
+            llm_api_key=args.api_key,
+            planner_provider=getattr(args, 'planner_provider', None),
+            implementer_provider=getattr(args, 'implementer_provider', None),
+            default_language=args.lang,
+        )
+        path = config.save_to_file()
+        print(f"\u2705 Config saved to: {path}")
+        sys.exit(0)
+
+    # Handle --interactive mode
+    if args.interactive:
+        from .interactive import interactive_session
+        exit_code = asyncio.run(interactive_session(args))
+        sys.exit(exit_code)
+
+    # Single-shot mode requires a request
     if not args.request:
         parser.print_help()
         sys.exit(1)

@@ -8,8 +8,10 @@ All hardcoded values converge here. Load from:
 """
 
 import os
-from dataclasses import dataclass, field
+import json
+from dataclasses import dataclass, field, asdict
 from typing import Optional, Dict, Any
+from pathlib import Path
 
 
 @dataclass
@@ -30,6 +32,14 @@ class AgentConfig:
     llm_max_tokens: int = 4096
     llm_api_key: Optional[str] = None  # override env var
 
+    # ── Per-Agent Provider Routing ────────────────────────
+    # If set, these override llm_provider for specific agents.
+    # Smart agents (planner, implementer) can use a better model.
+    planner_provider: Optional[str] = None
+    planner_api_key: Optional[str] = None
+    implementer_provider: Optional[str] = None
+    implementer_api_key: Optional[str] = None
+
     # ── Pipeline ─────────────────────────────────────────
     max_retries: int = 3
     auto_approve_new_files: bool = True
@@ -49,6 +59,7 @@ class AgentConfig:
 
     # ── Paths ────────────────────────────────────────────
     backup_dir: Optional[str] = None  # None → .ai_backups in project
+    default_language: str = "python"
 
     @classmethod
     def from_env(cls) -> "AgentConfig":
@@ -132,11 +143,53 @@ class AgentConfig:
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize config to a dictionary (safe for logging — masks API key)."""
-        from dataclasses import asdict
         d = asdict(self)
-        if d.get("llm_api_key"):
-            d["llm_api_key"] = d["llm_api_key"][:4] + "****"
+        for key in ("llm_api_key", "planner_api_key", "implementer_api_key"):
+            if d.get(key):
+                d[key] = d[key][:4] + "****"
         return d
+
+    @staticmethod
+    def config_dir() -> Path:
+        """Get the user config directory (~/.contextual-architect/)."""
+        config_home = Path.home() / ".contextual-architect"
+        config_home.mkdir(parents=True, exist_ok=True)
+        return config_home
+
+    def save_to_file(self, path: Optional[str] = None):
+        """Save config to JSON for reuse."""
+        if path is None:
+            path = str(self.config_dir() / "config.json")
+        data = asdict(self)
+        # Don't save None values
+        data = {k: v for k, v in data.items() if v is not None}
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+        return path
+
+    @classmethod
+    def load_user_config(cls) -> "AgentConfig":
+        """Load config from user's home dir, then layer env vars on top."""
+        config_path = cls.config_dir() / "config.json"
+        if config_path.exists():
+            try:
+                base = cls.from_file(str(config_path))
+            except Exception:
+                base = cls()
+        else:
+            base = cls()
+        
+        # Layer env vars on top
+        env_config = cls.from_env()
+        # Only override fields that were explicitly set in env
+        for field_name in cls.__dataclass_fields__:
+            env_val = getattr(env_config, field_name)
+            default_val = cls.__dataclass_fields__[field_name].default
+            if env_val != default_val:
+                setattr(base, field_name, env_val)
+        
+        return base
 
 
 def _parse_bool(value: str) -> bool:

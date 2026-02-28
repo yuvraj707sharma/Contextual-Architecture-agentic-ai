@@ -103,7 +103,7 @@ class Orchestrator:
         Initialize the orchestrator.
         
         Args:
-            llm_client: LLM client for Implementer (overrides config provider)
+            llm_client: Default LLM client (used for fast agents)
             config: Pipeline configuration (defaults to AgentConfig())
             pr_data_path: Path to pr_evolution.jsonl for PR search
             repo_path: Path to the target repo (enables RAG indexing)
@@ -119,13 +119,59 @@ class Orchestrator:
         # Initialize RAG retriever (optional — graceful if chromadb not installed)
         retriever = self._init_retriever(repo_path) if repo_path else None
         
-        # Initialize agents — ALL receive LLM client
-        self.planner = PlannerAgent(llm_client, retriever=retriever)
-        self.alignment = AlignmentAgent(llm_client)
+        # ── Per-Agent Provider Routing ────────────────────────
+        # Smart agents can use a better provider (e.g., Gemini)
+        # Fast agents use the default provider (e.g., Groq)
+        planner_client = llm_client
+        implementer_client = llm_client
+        
+        if self.config.planner_provider:
+            try:
+                from .llm_client import create_llm_client
+                planner_client = create_llm_client(
+                    provider=self.config.planner_provider,
+                    api_key=self.config.planner_api_key,
+                )
+                self.logger.info(
+                    f"Planner using: {self.config.planner_provider} "
+                    f"({planner_client.model_name})",
+                    extra={"agent": "orchestrator"},
+                )
+            except Exception as e:
+                self.logger.warning(
+                    f"Failed to create planner client ({self.config.planner_provider}): {e}. "
+                    f"Falling back to default.",
+                    extra={"agent": "orchestrator"},
+                )
+        
+        if self.config.implementer_provider:
+            try:
+                from .llm_client import create_llm_client
+                implementer_client = create_llm_client(
+                    provider=self.config.implementer_provider,
+                    api_key=self.config.implementer_api_key,
+                )
+                self.logger.info(
+                    f"Implementer using: {self.config.implementer_provider} "
+                    f"({implementer_client.model_name})",
+                    extra={"agent": "orchestrator"},
+                )
+            except Exception as e:
+                self.logger.warning(
+                    f"Failed to create implementer client ({self.config.implementer_provider}): {e}. "
+                    f"Falling back to default.",
+                    extra={"agent": "orchestrator"},
+                )
+        
+        # Initialize agents — smart agents get better provider
+        self.planner = PlannerAgent(planner_client, retriever=retriever)
+        self.alignment = AlignmentAgent(planner_client)  # uses planner's model
+        self.implementer = ImplementerAgent(implementer_client)
+        self.test_generator = TestGeneratorAgent(implementer_client)  # uses implementer's model
+        
+        # Fast agents use default provider
         self.historian = HistorianAgent(llm_client, retriever=retriever)
         self.architect = ArchitectAgent(llm_client)
-        self.implementer = ImplementerAgent(llm_client)
-        self.test_generator = TestGeneratorAgent(llm_client)
         self.reviewer = ReviewerAgent(llm_client)
         
         # Utilities
