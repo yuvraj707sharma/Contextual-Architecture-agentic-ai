@@ -1,56 +1,57 @@
-# 🏭 MACRO — Getting Started Guide
+# MACRO -- Getting Started Guide
 
-> Multi-Agent Contextual Repository Orchestrator — AI-powered code generation that understands your project's style, conventions, and structure.
+> Multi-Agent Contextual Repository Orchestrator -- AI-powered code generation that understands your project's style, conventions, and structure.
 
 ---
 
-## 📦 Step 1: Setup (One-Time, ~5 min)
+## Step 1: Setup (One-Time, ~5 min)
 
-### 1.1 Clone the Project
+### 1.1 Get the Project
+
+Get the project folder from the repo owner (USB, zip, or Git clone).
+
+### 1.2 Install Python
+
+Download Python 3.10+ from https://www.python.org/downloads/
+
+> IMPORTANT: Check "Add Python to PATH" during installation.
+
+### 1.3 Install Dependencies
+
+Open Command Prompt (cmd) and run:
 
 ```cmd
-git clone <repo-url>
-cd contextual-architect
-```
-
-Or copy the `contextual-architect` folder from USB/zip.
-
-### 1.2 Install Python Dependencies
-
-```cmd
+cd /d E:\FUn\contextual-architect
 pip install -r requirements.txt
+pip install -e .
 ```
 
-> **Requires:** Python 3.10+
+After this, the `macro` command works from **anywhere** on your system.
 
-### 1.3 Get Your API Key
+### 1.4 Get Your API Key (Free)
 
-You need at least **one** API key. Pick any provider:
+You need at least **one** API key. Pick any:
 
 | Provider | Free Tier | Get Key At |
 |----------|-----------|------------|
-| **Groq** (recommended) | ✅ 30 req/min | https://console.groq.com |
-| **Google Gemini** | ✅ 15 req/min | https://aistudio.google.com/apikey |
-| **OpenAI** | ❌ Paid | https://platform.openai.com |
-| **Anthropic** | ❌ Paid | https://console.anthropic.com |
+| **Groq** (recommended) | 30 req/min | https://console.groq.com |
+| **Google Gemini** | 15 req/min | https://aistudio.google.com/apikey |
+| **OpenAI** | Paid only | https://platform.openai.com |
+| **Anthropic** | Paid only | https://console.anthropic.com |
 
-### 1.4 Save Your Config (One-Time)
-
-**Option A: Using the CLI** (recommended)
+### 1.5 Save Your Config (One-Time)
 
 ```cmd
 :: Single provider (Groq only)
-python -m agents --save-config --provider groq --api-key gsk_YOUR_KEY_HERE
+macro --save-config --provider groq --api-key gsk_YOUR_KEY_HERE
 
-:: Multi-provider (Groq + Gemini — best quality)
+:: Multi-provider (Groq + Gemini -- best quality)
 set GROQ_API_KEY=gsk_YOUR_KEY_HERE
 set GOOGLE_API_KEY=AIza_YOUR_KEY_HERE
-python -m agents --save-config --provider groq --planner-provider google
+macro --save-config --provider groq --planner-provider google
 ```
 
-**Option B: Manually create config file**
-
-Create `C:\Users\<YourName>\.contextual-architect\config.json`:
+Or create the config file manually at `C:\Users\<YourName>\.contextual-architect\config.json`:
 
 ```json
 {
@@ -62,165 +63,158 @@ Create `C:\Users\<YourName>\.contextual-architect\config.json`:
 }
 ```
 
-> After this, you **never** need to set API keys again. They're saved permanently.
+> After this, you never need to set API keys again. They're saved permanently.
 
-### 1.5 Verify It Works
+### 1.6 Verify It Works
 
 ```cmd
-python -m agents "Add hello world function" --repo . --lang python
+macro -i --repo . --lang python
 ```
 
-You should see `✅ SUCCESS` with generated code.
+You should see the MACRO banner with the config section. Type `exit` to quit.
 
 ---
 
-## 🚀 Step 2: Usage
+## Step 2: Usage
 
-### Mode 1: Interactive Chat (Recommended)
+### Interactive Mode (Recommended)
 
-Start a persistent chat session:
+Start a chat session pointed at any folder on your PC:
 
 ```cmd
-python -m agents -i --repo "C:\path\to\your\project" --lang python
+:: Python project
+macro -i --repo "C:\path\to\your\project" --lang python
+
+:: C++ project
+macro -i --repo "C:\DSA\Basic_Mathematics" --lang cpp
+
+:: Java project
+macro -i --repo "D:\Projects\MyApp" --lang java
 ```
 
 You'll see:
 
 ```
-  ╔══════════════════════════════════════════════════╗
-  ║  🏗️  CONTEXTUAL ARCHITECT                        ║
-  ╚══════════════════════════════════════════════════╝
+      +-------------+
+      |  MACRO      |  Multi-Agent Contextual Repository Orchestrator
+      +-------------+
 
-  📁 Repo:     C:\path\to\your\project
-  🤖 Provider: groq
-  🧠 Planner:  google
+  > Repo:     C:\path\to\your\project
+  > Language: python
+  > Provider: groq
 
-  ❯ _
+  [?] Chat: Ask questions about your code
+  [+] Build: Type what you want to build
+  [!] Help:  Type help for all commands
+
+  > _
 ```
 
-Type your requests naturally:
+**Two modes -- auto-detected:**
 
-```
-  ❯ Add user authentication
-  ❯ Add logging to @main.py
-  ❯ Add binary search to @sorting.cpp
-  ❯ Add factorial ||| 1. Take n 2. Use loop 3. Handle negatives
-  ❯ exit
-```
+| You Type | Mode | What Happens |
+|----------|------|-------------|
+| "What does this project do?" | Chat | Analyzes your code and answers the question |
+| "Is there any security issue?" | Chat | Reviews your code for vulnerabilities |
+| "Add user authentication" | Build | Runs the full 9-agent pipeline and generates code |
+| "Add sort to @data.cpp" | Build | Modifies the specified file |
 
 **Interactive Commands:**
 
 | Command | What It Does |
 |---------|-------------|
-| `help` | Show all commands |
+| `help` | Show all commands with examples |
 | `status` | Show current config |
 | `config` | Show saved config path |
 | `clear` | Clear the screen |
 | `exit` / `quit` | End the session |
 
-### Mode 2: Single-Shot Command
+### Single-Shot Mode
 
 Run one request and exit:
 
 ```cmd
-:: Python project
-python -m agents "Add login system" --repo "C:\my\project" --lang python
-
-:: C++ project
-python -m agents "Add binary search algorithm" --repo "C:\DSA\Basic_Mathematics" --lang cpp
+macro "Add login system" --repo "C:\my\project" --lang python
+macro "Add binary search algorithm" --repo "C:\DSA" --lang cpp
 ```
 
 ---
 
-## 📁 Step 3: Working With Your Files
+## Step 3: Working With Your Files
 
-### Referencing Existing Files
+### Reference Existing Files with @
 
-Use `@filename` to tell the tool which file to modify:
+Use `@filename` to tell MACRO which file to modify:
 
 ```
-❯ Add booking feature to @Movie_ticket_pricing.py
-❯ Fix the bug in @utils/auth.py
-❯ Add prime number checker to @Armstrong.cpp
+> Add booking feature to @Movie_ticket_pricing.py
+> Fix the bug in @utils.py
+> What does @Armstrong.cpp do?
 ```
 
-This ensures the tool **modifies your file** instead of creating a new one.
+This ensures MACRO **modifies your file** instead of creating a new one.
 
 ### Without File Reference
 
-If you don't mention a file, the tool creates a **new file**:
+If you don't mention a file, MACRO creates a **new file**:
 
 ```
-❯ Add sorting algorithm
-→ Creates: sorting_algorithm.py (new file)
+> Add sorting algorithm
+  --> Creates: sorting_algorithm.py (new file)
 
-❯ Add binary search
-→ Creates: binary_search.cpp (new file, if --lang cpp)
-```
-
-### Changing The Repo
-
-The repo is set when you start the session. To work on a different project:
-
-```cmd
-:: Exit current session
-❯ exit
-
-:: Start new session with different repo
-python -m agents -i --repo "D:\other\project" --lang python
+> Add binary search
+  --> Creates: binary_search.cpp (new file, if --lang cpp)
 ```
 
 ---
 
-## 📝 Step 4: Using Pseudocode (Power Feature)
+## Step 4: Using Pseudocode (Power Feature)
 
-Pseudocode gives the AI **exact instructions** on what logic to write. This is the most powerful feature — it ensures the AI follows YOUR logic, not its own.
+Pseudocode gives MACRO exact instructions on what logic to write.
 
-### In Interactive Mode (using `|||`)
+### In Interactive Mode (using |||)
 
 Type your request, then `|||`, then the pseudocode:
 
 ```
-❯ Add factorial ||| 1. Take n from user 2. Use loop not recursion 3. Handle negative input
-❯ Add GCD and LCM ||| 1. Take two numbers 2. GCD using Euclidean algorithm 3. LCM = (a*b)/GCD
-❯ Add sort to @data.cpp ||| use merge sort, not bubble sort
+> Add factorial ||| 1. Take n from user 2. Use loop not recursion 3. Handle negative input
+> Add GCD and LCM ||| 1. Take two numbers 2. GCD using Euclidean algorithm 3. LCM = (a*b)/GCD
+> Add sort to @data.cpp ||| use merge sort, not bubble sort
 ```
 
-### In Single-Shot Mode (using `--pseudocode`)
+### In Single-Shot Mode (using --pseudocode)
 
 ```cmd
-python -m agents "Add movie booking" --repo "C:\project" --lang python --pseudocode "1. Ask number of tickets 2. Ask seat type premium or regular 3. Premium costs extra $5 4. Calculate total 5. Print receipt"
+macro "Add movie booking" --repo "C:\project" --lang python --pseudocode "1. Ask number of tickets 2. Ask seat type 3. Calculate total 4. Print receipt"
 ```
 
 ### From a File
 
-Create a file `my_plan.txt`:
+Create `my_plan.txt`:
 
 ```
 1. Get user age and day of week
 2. Base price: $12 for adults, $8 for children
 3. Wednesday discount: $2 off
-4. Ask number of tickets
-5. Ask seat type (premium +$5, regular)
-6. Calculate total
-7. Print itemized receipt
+4. Calculate total
+5. Print receipt
 ```
 
 Then:
 
 ```cmd
-python -m agents "Add booking to @Movie_ticket_pricing.py" --repo "C:\project" --lang python --pseudocode my_plan.txt
+macro "Add booking to @Movie_ticket_pricing.py" --repo "C:\project" --lang python --pseudocode my_plan.txt
 ```
 
 ---
 
-## ⚙️ Step 5: Multi-Provider (Advanced)
+## Step 5: Multi-Provider (Advanced)
 
 Use different AI models for different tasks:
 
 ```cmd
 :: Gemini plans (smarter), Groq executes (faster)
-python -m agents -i --repo "C:\project" --lang python --planner-provider google
+macro -i --repo "C:\project" --lang python --planner-provider google
 ```
 
 | Agent | Default Provider | What It Does |
@@ -234,36 +228,38 @@ python -m agents -i --repo "C:\project" --lang python --planner-provider google
 
 ---
 
-## 📊 Step 6: Understanding the Output
+## Step 6: Understanding the Output
 
-Every run produces a result like this:
+Every build run produces a result like this:
 
 ```
 ======================================================================
-  CONTEXTUAL ARCHITECT — RESULT
+  MACRO -- RESULT
 ======================================================================
 
-  ✅ SUCCESS
-  📁 Target File:  Movie_ticket_pricing.py
-  🔄 Attempts:     1
+  SUCCESS
+  > Target File:  Movie_ticket_pricing.py
+  > Attempts:     1
 
-  📝 Proposed Changes:
-     ✅ NEW FILES (auto-approved)         ← Safe, auto-created
-     ⚠️  MODIFICATIONS (permission req)  ← Needs your approval
-     🚫 NOT MODIFIED (preserved)         ← Your existing files stay safe
+  > Agent Summaries:
+     [historian] 2 patterns found. 4 conventions detected.
+     [planner]   3 acceptance criteria defined
+     [reviewer]  Passed: 0 errors, 0 warnings
 
-  💻 Generated Code Preview:
-     [shows the actual code]
+  Proposed Changes:
+     CREATE:  new_file.py (auto-approved)
+     MODIFY:  existing.py (needs your OK)
+     BLOCKED: dangerous_change.py (rejected)
 ```
 
 ### Change Types
 
 | Symbol | Meaning |
 |--------|---------|
-| ✅ `CREATE` | New file — safe, auto-approved |
-| ⚠️ `MODIFY` | Changes existing file — needs permission |
-| ⛔ `BLOCKED` | Dangerous change detected — won't apply |
-| 🚫 `NOT MODIFIED` | Existing file preserved as-is |
+| `CREATE` | New file -- safe, auto-approved |
+| `MODIFY` | Changes existing file -- needs permission |
+| `BLOCKED` | Dangerous change detected -- won't apply |
+| `NOT MODIFIED` | Existing file preserved as-is |
 
 ### Where Are the Files?
 
@@ -272,63 +268,32 @@ Every run produces a result like this:
 
 ---
 
-## 🔍 Step 7: Testing & Giving Feedback
-
-### What to Test
-
-1. **Basic requests** — "Add a calculator", "Add factorial function"
-2. **File modifications** — "Add feature to @existing_file.py" or @armstrong.cpp
-3. **With pseudocode** — Use `|||` in interactive or `--pseudocode` in CLI
-4. **Style matching** — Does C++ output use `cout` (not `std::cout`)? Does Python match naming?
-5. **Edge cases** — Empty requests, wrong paths, wrong language flag
-6. **Code quality** — Does the output compile/run correctly?
-
-### How to Report Issues
-
-For each test, note:
-
-```
-Command:    python -m agents "Add feature" --repo ./project --lang python
-Expected:   Should modify existing file
-Actual:     Created new file instead
-Severity:   🟡 Bad UX (not a crash, but wrong behavior)
-```
-
-### Feedback Categories
-
-| 🟢 Works | Feature works as expected |
-| 🟡 Bad UX | Works but confusing/wrong behavior |
-| 🔴 Broken | Crash, error, or security issue |
-| 💡 Idea | Feature suggestion or improvement |
-
----
-
-## 📋 Quick Reference
+## Quick Reference
 
 ```cmd
 :: Interactive mode (Python)
-python -m agents -i --repo "C:\project" --lang python
+macro -i --repo "C:\project" --lang python
 
 :: Interactive mode (C++)
-python -m agents -i --repo "C:\DSA\Basic_Mathematics" --lang cpp
+macro -i --repo "C:\DSA\Basic_Mathematics" --lang cpp
 
 :: Single-shot
-python -m agents "Add feature" --repo "C:\project" --lang python
+macro "Add feature" --repo "C:\project" --lang python
 
 :: With pseudocode (CLI)
-python -m agents "Add feature" --repo "C:\project" --lang python --pseudocode "1. Do X 2. Do Y"
+macro "Add feature" --repo "C:\project" --lang python --pseudocode "1. Do X 2. Do Y"
 
 :: With pseudocode (interactive)
-:: Inside the ❯ prompt, type:  Add feature ||| 1. Do X 2. Do Y
+:: Inside the > prompt, type:  Add feature ||| 1. Do X 2. Do Y
 
 :: Multi-provider
-python -m agents "Add feature" --repo "C:\project" --lang python --planner-provider google
+macro "Add feature" --repo "C:\project" --lang python --planner-provider google
 
 :: Save config
-python -m agents --save-config --provider groq --planner-provider google
+macro --save-config --provider groq --planner-provider google
 
 :: Help
-python -m agents --help
+macro --help
 ```
 
 ### Supported Languages
@@ -341,69 +306,53 @@ python -m agents --help
 
 ---
 
-## ❓ Troubleshooting
+## Troubleshooting
 
 | Problem | Fix |
 |---------|-----|
-| `GROQ_API_KEY not found` | Run `--save-config` with `--api-key` flag |
+| `macro` not recognized | Run `pip install -e .` from the project folder |
+| `No module named agents` | You're not in the project folder. Use `macro` command instead |
+| `GROQ_API_KEY not found` | Run `macro --save-config --provider groq --api-key YOUR_KEY` |
 | `Repository path does not exist` | Check the `--repo` path is correct |
-| `pip install -e .` fails | Ignore it — use `python -m agents` directly |
 | Tool creates new file instead of modifying | Use `@filename` in your request |
-| `⛔ BLOCKED: 80% deletion` | The tool protected your file from replacement |
+| `BLOCKED: 80% deletion` | The tool protected your file from replacement |
 | Slow response | Groq free tier: 30 req/min. Wait and retry |
-| C++ uses `std::cout` instead of `cout` | Re-check your project has `using namespace std;` in .cpp files |
-| `|||` pseudocode not working | Make sure you're in interactive mode (`-i`) |
+| `UnicodeEncodeError` | Use Windows Terminal instead of cmd, or update to latest version |
 
 ---
 
-## 🎯 Real-World Examples (Tested)
+## Testing & Giving Feedback
 
-### Example 1: C++ — New File
+### What to Test
 
-```cmd
-python -m agents -i --repo C:\DSA\Basic_Mathematics --lang cpp
-```
-```
-❯ Add factorial function ||| 1. Take n from user 2. Use loop not recursion 3. Handle negative input
-```
+1. **Chat mode** -- "What does this project do?", "Find bugs in @file.py"
+2. **Build mode** -- "Add a calculator", "Add factorial function"
+3. **File modifications** -- "Add feature to @existing_file.py"
+4. **With pseudocode** -- Use `|||` in interactive or `--pseudocode` in CLI
+5. **Style matching** -- Does C++ output use `cout` (not `std::cout`)? Does Python match naming?
+6. **Code quality** -- Does the output compile/run correctly?
 
-**Result:** Creates `add_factorial_function.cpp` with:
-```cpp
-#include<iostream>         // ✅ Matches project style
-using namespace std;       // ✅ Detected from your files
+### How to Report Issues
 
-long long calculateFactorial(int n) {
-    if (n < 0) throw "Error: not defined for negatives";
-    long long factorial = 1;
-    for (int i = 2; i <= n; i++)   // ✅ Loop, not recursion
-        factorial *= i;
-    return factorial;
-}
-
-int main() {
-    int n;
-    cout << "Enter a number: ";  // ✅ cout, not std::cout
-    cin >> n;
-    // ...
-}
-```
-
-### Example 2: C++ — Modify Existing File
+For each test, note:
 
 ```
-❯ Add prime number checker to @Armstrong.cpp
+Command:    macro -i --repo "C:\project" --lang python
+Request:    Add login system
+Expected:   Should create login_system.py
+Actual:     Created feature.py instead
+Severity:   Bad UX (not a crash, but wrong behavior)
 ```
 
-**Result:** Shows a diff preview of changes to `Armstrong.cpp`, preserving all existing code.
+### Feedback Categories
 
-### Example 3: Python — New File
-
-```cmd
-python -m agents "Add calculator with add subtract multiply divide" --repo E:\FUn\Learn_Python --lang python
-```
-
-**Result:** Creates `calculator.py` following your project's conventions (naming, style, structure).
+| Category | Meaning |
+|----------|---------|
+| Works | Feature works as expected |
+| Bad UX | Works but confusing/wrong behavior |
+| Broken | Crash, error, or security issue |
+| Idea | Feature suggestion or improvement |
 
 ---
 
-*Built with ❤️ — Contextual Architect v1.0*
+*MACRO v0.1.0 -- Multi-Agent Contextual Repository Orchestrator*
