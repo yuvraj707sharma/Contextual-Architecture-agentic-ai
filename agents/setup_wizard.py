@@ -141,7 +141,7 @@ def check_dependencies() -> Tuple[bool, list]:
     """Check required dependencies."""
     required = [
         ("httpx", "httpx"),
-        ("google.generativeai", "google-generai"),
+        ("google.genai", "google-genai"),
     ]
     optional = [
         ("chromadb", "chromadb"),
