@@ -209,30 +209,30 @@ def print_result(result: OrchestrationResult, orchestrator: Orchestrator, as_jso
 
     # Validation
     if result.validation:
-        print(f"  🔍 Validation:   {result.validation.summary}")
+        print(f"  > Validation:   {result.validation.summary}")
         if result.validation.warnings:
             for w in result.validation.warnings[:5]:
-                print(f"     ⚠️  {w.message}")
+                print(f"     [!] {w.message}")
     print()
 
     # Metrics
     if result.metrics:
-        print(f"  ⏱️  Duration:     {result.metrics.total_duration_ms:.0f}ms")
+        print(f"  > Duration:     {result.metrics.total_duration_ms:.0f}ms")
         if result.metrics.retries > 0:
-            print(f"  🔄 Retries:      {result.metrics.retries}")
+            print(f"  > Retries:      {result.metrics.retries}")
     print()
 
     # Show proposed changes
     if result.changeset:
         changes_output = orchestrator.show_changes(result)
-        print("  📝 Proposed Changes:")
+        print("  > Proposed Changes:")
         for line in changes_output.split("\n"):
             print(f"     {line}")
         print()
 
     # Show generated code preview
     if result.generated_code:
-        print("  💻 Generated Code Preview:")
+        print("  > Generated Code Preview:")
         print("  " + "-" * 60)
         lines = result.generated_code.split("\n")
         for line in lines[:40]:
@@ -354,7 +354,7 @@ async def run(args) -> int:
             user_pseudocode=user_pseudocode,
         )
     except KeyboardInterrupt:
-        print("\n\n⚠️  Interrupted by user.")
+        print("\n\n  Interrupted by user.")
         return 1
     except Exception as e:
         logger.error(f"Pipeline failed: {e}")
@@ -368,12 +368,12 @@ async def run(args) -> int:
 
     # If dry run, stop here
     if args.dry_run:
-        print("  🔒 Dry run — no files written.")
+        print("  Dry run -- no files written.")
         return 0 if result.success else 1
 
     # If there's a changeset with permissions needed, handle it
     if result.changeset and result.changeset.needs_permission:
-        print("  ⚠️  Some changes require your approval.")
+        print("  [!] Some changes require your approval.")
         print("     Run with --dry-run to preview without writing.")
         # In future: interactive approval loop here
 

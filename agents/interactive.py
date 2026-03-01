@@ -172,7 +172,7 @@ def parse_file_references(request: str, repo_path: str) -> str:
         
         # SECURITY: Block path traversal
         if not _is_safe_path(full_path, repo):
-            print(Colors.colored(f"  ⚠️  Blocked: @{match} — path traversal detected", Colors.RED))
+            print(Colors.colored(f"  [!] Blocked: @{match} -- path traversal detected", Colors.RED))
             request = request.replace(f"@{match}", "[BLOCKED]")
             continue
         
@@ -325,7 +325,7 @@ def _collect_file_contents(repo_path: str, user_input: str, lang: str, max_files
         for item in sorted(repo.iterdir()):
             if item.name.startswith('.') or item.name == '__pycache__':
                 continue
-            kind = '📁' if item.is_dir() else '📄'
+            kind = '[D]' if item.is_dir() else '[F]'
             top_files.append(f"  {kind} {item.name}")
         if top_files:
             contents.insert(0, f"=== Project Structure ===\n" + '\n'.join(top_files[:20]))
@@ -346,7 +346,7 @@ async def handle_chat(
     
     Reads relevant files, sends to LLM with the question, prints the answer.
     """
-    print(Colors.colored("  💬 Chat Mode", Colors.CYAN + Colors.BOLD))
+    print(Colors.colored("  [?] Chat Mode", Colors.CYAN + Colors.BOLD))
     print(Colors.colored("  ─────────────────────────────────────", Colors.DIM))
     
     # Collect context
@@ -459,7 +459,7 @@ def check_pseudocode_alignment(pseudocode: str, generated_code: str) -> None:
     }
     
     print()
-    print(Colors.colored("  📋 Pseudocode Alignment Check:", Colors.BOLD + Colors.CYAN))
+    print(Colors.colored("  [=] Pseudocode Alignment Check:", Colors.BOLD + Colors.CYAN))
     print(Colors.colored("  ─────────────────────────────────────", Colors.DIM))
     
     passed = 0
@@ -503,7 +503,7 @@ def check_pseudocode_alignment(pseudocode: str, generated_code: str) -> None:
     if passed == total:
         print(Colors.colored(f"\n    ✅ All {total} steps aligned!", Colors.GREEN + Colors.BOLD))
     else:
-        print(Colors.colored(f"\n    ⚠️  {passed}/{total} steps aligned", Colors.YELLOW + Colors.BOLD))
+        print(Colors.colored(f"\n    [!] {passed}/{total} steps aligned", Colors.YELLOW + Colors.BOLD))
     print()
 
 
@@ -531,7 +531,7 @@ async def run_single_request(
         print_result(result, orchestrator)
         return result
     except KeyboardInterrupt:
-        print("\n  ⚠️  Request interrupted.")
+        print("\n  [!] Request interrupted.")
         return None
     except Exception as e:
         print(Colors.colored(f"\n  ❌ Error: {e}", Colors.RED))
@@ -547,7 +547,7 @@ async def interactive_session(args) -> int:
     # Resolve repo path
     repo_path = os.path.abspath(args.repo)
     if not os.path.isdir(repo_path):
-        print(Colors.colored(f"  ❌ Repository path does not exist: {repo_path}", Colors.RED))
+        print(Colors.colored(f"  [X] Repository path does not exist: {repo_path}", Colors.RED))
         return 1
     
     # Determine provider — Priority: CLI args > env vars > config file
@@ -572,7 +572,7 @@ async def interactive_session(args) -> int:
     
     if provider == "mock":
         print(Colors.colored(
-            "  ⚠️  No LLM provider detected. Set GROQ_API_KEY, GOOGLE_API_KEY, etc.",
+            "  [!] No LLM provider detected. Set GROQ_API_KEY, GOOGLE_API_KEY, etc.",
             Colors.YELLOW,
         ))
         return 1
@@ -600,7 +600,7 @@ async def interactive_session(args) -> int:
             api_key=config.llm_api_key,
         )
     except ValueError as e:
-        print(Colors.colored(f"  ❌ Failed to create LLM client: {e}", Colors.RED))
+        print(Colors.colored(f"  [X] Failed to create LLM client: {e}", Colors.RED))
         return 1
     
     lang = args.lang
@@ -625,7 +625,7 @@ async def interactive_session(args) -> int:
             # SECURITY: Input length limit (VULN-3)
             if len(user_input) > _MAX_INPUT_LENGTH:
                 print(Colors.colored(
-                    f"  ⚠️  Input too long ({len(user_input):,} chars). "
+                    f"  [!] Input too long ({len(user_input):,} chars). "
                     f"Max is {_MAX_INPUT_LENGTH:,} chars.",
                     Colors.YELLOW,
                 ))
@@ -635,7 +635,7 @@ async def interactive_session(args) -> int:
             cmd = user_input.lower()
             
             if cmd in ("exit", "quit", "q"):
-                print(Colors.colored(f"\n  👋 Session ended. {request_count} requests processed.\n", Colors.DIM))
+                print(Colors.colored(f"\n  Session ended. {request_count} requests processed.\n", Colors.DIM))
                 return 0
             
             elif cmd == "help":
@@ -665,9 +665,9 @@ async def interactive_session(args) -> int:
             elif cmd == "config":
                 config_path = AgentConfig.config_dir() / "config.json"
                 if config_path.exists():
-                    print(f"\n  📄 Config: {config_path}")
+                    print(f"\n  Config: {config_path}")
                 else:
-                    print(f"\n  ℹ️  No saved config. Use --save-config to create one.")
+                    print(f"\n  No saved config. Use --save-config to create one.")
                 print()
                 continue
             
@@ -677,7 +677,7 @@ async def interactive_session(args) -> int:
                 parts = user_input.split('|||', 1)
                 user_input = parts[0].strip()
                 user_pseudocode = parts[1].strip()
-                print(Colors.colored(f"  📝 Pseudocode: {user_pseudocode[:80]}{'...' if len(user_pseudocode) > 80 else ''}", Colors.DIM))
+                print(Colors.colored(f"  Pseudocode: {user_pseudocode[:80]}{'...' if len(user_pseudocode) > 80 else ''}", Colors.DIM))
             
             # Parse @file references
             request = parse_file_references(user_input, repo_path)

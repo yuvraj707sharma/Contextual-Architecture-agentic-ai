@@ -1,7 +1,9 @@
+# Reference Paper: SimpleMem -- Efficient Lifelong Memory for LLM Agents
 
-1
+> This is a reference paper for future MACRO memory system improvements.
+> Source: arXiv:2601.02553v3 [cs.AI] 29 Jan 2026
+> GitHub: https://github.com/aiming-lab/SimpleMem
 
-Automatic Zoom
 SimpleMem: Efficient Lifelong Memory for LLM Agents
 Jiaqi Liu 1 * Yaofeng Su 1 * Peng Xia 1 Siwei Han 1
 Zeyu Zheng 2 Cihang Xie 3 Mingyu Ding 1 Huaxiu Yao 1

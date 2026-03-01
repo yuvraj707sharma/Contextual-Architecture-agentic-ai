@@ -159,24 +159,15 @@ class AgentConfig:
     def save_to_file(self, path: Optional[str] = None):
         """Save config to JSON for reuse.
         
-        SECURITY: API keys are masked before writing. Only the first
-        and last 4 characters are stored — enough to identify which
-        key is configured, not enough to use it. Keys should be set
-        via environment variables (GROQ_API_KEY, GOOGLE_API_KEY, etc).
+        API keys are saved in plaintext but the file is protected
+        with owner-only permissions (chmod 0o600 on Unix).
+        For display/logging, use to_dict() which masks keys.
         """
         if path is None:
             path = str(self.config_dir() / "config.json")
         data = asdict(self)
         # Don't save None values
         data = {k: v for k, v in data.items() if v is not None}
-        
-        # SECURITY: Mask API keys before writing (VULN-2)
-        for key_field in ("llm_api_key", "planner_api_key", "implementer_api_key"):
-            if data.get(key_field) and len(data[key_field]) > 8:
-                val = data[key_field]
-                data[key_field] = val[:4] + "****" + val[-4:]
-            elif data.get(key_field):
-                data[key_field] = "****"
         
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
