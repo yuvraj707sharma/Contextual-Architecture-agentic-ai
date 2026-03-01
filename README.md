@@ -1,86 +1,81 @@
-<p align="center">
-  <img src="assets/macro-logo.png" alt="MACRO Logo" width="200">
-</p>
-
 <h1 align="center">MACRO</h1>
 <p align="center"><strong>Multi-Agent Contextual Repository Orchestrator</strong></p>
-<p align="center">An AI system that writes production-grade code by learning from your project's evolution, conventions, and architecture.</p>
+<p align="center">An AI coding agent that writes production-grade code by learning your project's conventions, architecture, and evolution.</p>
 
 <p align="center">
-  <a href="#quick-start"><img src="https://img.shields.io/badge/tests-246%20passing-brightgreen" alt="Tests"></a>
+  <a href="#quick-install"><img src="https://img.shields.io/badge/tests-246%20passing-brightgreen" alt="Tests"></a>
   <a href="#"><img src="https://img.shields.io/badge/python-3.10%2B-blue" alt="Python"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="License: MIT"></a>
-  <a href="#"><img src="https://img.shields.io/badge/agents-7%20specialized-orange" alt="Agents"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-green.svg" alt="License: Apache 2.0"></a>
+  <a href="#"><img src="https://img.shields.io/badge/agents-9%20specialized-orange" alt="Agents"></a>
+  <a href="#"><img src="https://img.shields.io/badge/providers-7%20supported-purple" alt="Providers"></a>
 </p>
 
 ---
 
-## The Problem
+## Why MACRO?
 
-Current AI coding tools (Cursor, Copilot, Replit) write code that **works in isolation** but **fails enterprise code review**. They don't understand your project's conventions, architecture, or the unwritten "we don't do it that way here" rules.
+- **$0 with free APIs**: Use Groq (30 req/min) or Gemini (15 req/min) free tiers. No subscription.
+- **7 LLM providers**: Google Gemini, Groq, OpenAI, Anthropic, DeepSeek, Ollama, Mock. Bring your own key.
+- **9 specialized agents**: Not one prompt — a full pipeline that plans, validates, and reviews before writing.
+- **Style-aware**: Learns your naming conventions, indentation, logging patterns, and error handling.
+- **Permission-based**: Never writes a file without showing you the diff and asking first.
+- **Security enforcement**: CWE denylist blocks known vulnerability patterns before they reach your codebase.
+- **Self-hosted**: Runs fully offline with Ollama. Your code never leaves your machine.
+- **Open source**: Apache 2.0 licensed.
 
-## Our Solution
+## Quick Install
 
-MACRO uses a **7-agent pipeline** that scans your codebase, learns its patterns, plans before generating, and validates before presenting — like having a senior engineer who's been at your company for 10 years.
-
-| Existing Tools | MACRO |
-|----------------|---------------------|
-| Isolated code snippets | Full project-aware features |
-| No pattern learning | Learns conventions from your repo |
-| Single model prompt | 7 specialized agents in parallel |
-| Static context | Real-time codebase scanning |
-| No security checks | CWE denylist + automated validation |
-
-## Architecture
-
-```
-User Request
-    │
-    ├──► Historian ────► Detects conventions, anti-patterns, common mistakes
-    ├──► Architect ────► Maps structure, finds utilities, suggests file placement
-    ├──► Style Analyzer ► Extracts naming, indentation, logging, error patterns
-    │        │
-    │        ▼
-    ├──► Planner ──────► Creates structured plan with acceptance criteria
-    ├──► Alignment ────► Validates plan against user intent
-    │        │
-    │        ▼
-    ├──► Implementer ──► Generates code with full context from all agents
-    ├──► Reviewer ─────► Validates syntax, security, linting (CWE denylist)
-    ├──► Test Generator ► Creates unit tests mapped to acceptance criteria
-    │        │
-    │        ▼
-    └──► Safe Writer ──► Permission-based file output (never writes without consent)
-```
-
-**Key Technique**: The plan is written to disk and re-read on every retry, pushing it into the LLM's recent attention window (inspired by [Manus AI](https://manus.im)).
-
-## Quick Start
-
-### 1. Install
 ```bash
 git clone https://github.com/yuvraj707sharma/Contextual-Architecture-agentic-ai.git
 cd contextual-architect
+pip install -r requirements.txt
 pip install -e .
 ```
 
-### 2. Set your API key (any one provider)
+### First-Time Setup (Interactive)
+
 ```bash
-# Groq (free, fast) — recommended for testing
-export GROQ_API_KEY="gsk_..."
-
-# Google Gemini (free tier)
-export GOOGLE_API_KEY="..."
-
-# Or: OPENAI_API_KEY, ANTHROPIC_API_KEY, DEEPSEEK_API_KEY
+macro --setup
 ```
 
-### 3. Run
-```bash
-# CLI
-python -m agents "Add a /health endpoint" --repo ./your-project --lang python
+The setup wizard will:
+- Check your system (Python version, dependencies)
+- Ask which provider you want (Gemini and Groq are **FREE**)
+- Test your API key
+- Optionally configure a second provider for smarter planning
+- Save everything permanently
 
-# Python API
+### Manual Setup (Alternative)
+
+```bash
+# Set any one API key
+export GOOGLE_API_KEY="your_key_here"     # or
+export GROQ_API_KEY="your_key_here"       # or
+export OPENAI_API_KEY="your_key_here"
+
+# Save config
+macro --save-config --provider google --api-key YOUR_KEY
+```
+
+## Usage
+
+```bash
+# Interactive mode (recommended)
+macro -i --repo ./your-project --lang python
+
+# Single-shot: generate a feature
+macro "Add JWT authentication middleware" --repo ./myproject --lang python
+
+# Multi-provider: fast agents + smart planner
+macro -i --repo . --provider groq --planner-provider google
+
+# See all options
+macro --help
+```
+
+### Python API
+
+```python
 from agents import Orchestrator
 from agents.llm_client import create_llm_client
 
@@ -90,19 +85,57 @@ result = await orchestrator.run("Add a /health endpoint", repo_path=".", languag
 print(result.generated_code)
 ```
 
-## Supported LLM Providers
+## How It Works
+
+```
+User Request
+    |
+    |-- [Parallel Discovery] ----+
+    |   |-- Historian             |  Detects conventions, anti-patterns
+    |   |-- Architect             |  Maps structure, finds utilities
+    |   |-- Style Analyzer        |  Extracts naming, indentation, logging
+    |   |-- PR Searcher           |  Finds relevant past PRs
+    |                             |
+    |-- Planner ------------------+  Creates structured plan + acceptance criteria
+    |-- Alignment                    Validates plan against user intent
+    |                             
+    |-- [Implementation Loop] ---+
+    |   |-- Implementer           |  Generates code with full agent context
+    |   |-- Reviewer              |  Validates syntax, security, linting
+    |   |-- (retry if rejected)   |  Feeds errors back, re-reads plan from disk
+    |                             
+    |-- Test Generator               Auto-generates tests from plan criteria
+    |-- Safe Writer                   Shows diff, asks permission before writing
+```
+
+**Key technique**: The plan is written to disk and re-read on every retry, pushing it into the LLM's recent attention window (inspired by [Manus AI](https://manus.im)).
+
+## Supported Providers
 
 | Provider | Model | Cost | Notes |
 |----------|-------|------|-------|
-| **Groq** | llama-3.3-70b | Free tier | Fast inference, recommended for testing |
-| **Google Gemini** | gemini-2.5-flash | Free tier | Good for coding tasks |
+| **Google Gemini** | gemini-2.5-flash | Free tier | Recommended for getting started |
+| **Groq** | llama-3.3-70b | Free tier | Fast inference |
 | **DeepSeek** | deepseek-chat | $0.14/1M tokens | Best cost-performance ratio |
 | **OpenAI** | gpt-4o | Paid | Premium quality |
-| **Anthropic** | claude-3.5-sonnet | Paid | Premium quality |
-| **Ollama** | any local model | Free (local) | Privacy-first, offline |
+| **Anthropic** | claude-3.5-sonnet | Paid | Best reasoning |
+| **Ollama** | any local model | Free (local) | Fully offline, air-gapped |
 | **Mock** | — | Free | For testing without API keys |
 
-Auto-detection: Set any `*_API_KEY` env var and the system finds the right provider.
+Auto-detection: Set any `*_API_KEY` env var and MACRO finds the right provider.
+
+## What Makes MACRO Different
+
+| Feature | Copilot/Cursor | Claude Code | MACRO |
+|---------|---------------|-------------|-------|
+| Style matching | No | No | **Yes** — learns your conventions |
+| Permission-based writing | No | No | **Yes** — shows diff, asks first |
+| Security enforcement (CWE) | No | Partial | **Yes** — denylist blocks patterns |
+| Provider agnostic | No | No | **Yes** — 7 providers |
+| Self-hosted / offline | No | No | **Yes** — Ollama support |
+| Multi-agent pipeline | No | No | **Yes** — 9 specialized agents |
+| Open source | No | No | **Yes** — Apache 2.0 |
+| Cost | $10-500/mo | $20-200/mo | **$0** with free tiers |
 
 ## Evaluation Results
 
@@ -110,24 +143,19 @@ Tested against a real FastAPI project (44 files) with **Groq llama-3.3-70b-versa
 
 | Task | Without RAG | With RAG | Time |
 |------|------------|----------|------|
-| Health check endpoint | 11/11 ✅ | 11/11 ✅ | 14.5s |
-| Security input validation | 11/11 ✅ | 11/11 ✅ | 8.8s |
-| Repository pattern refactor | 9/10 ⚠️ | **10/10** ✅ | 11.4s |
+| Health check endpoint | 11/11 | 11/11 | 14.5s |
+| Security input validation | 11/11 | 11/11 | 8.8s |
+| Repository pattern refactor | 9/10 | **10/10** | 11.4s |
 | **Total** | **31/32 (96.9%)** | **32/32 (100%)** | **34.7s** |
 
-**Key finding**: RAG eliminated a CWE-89 false positive by providing the repo's actual SQLAlchemy ORM patterns. Total time dropped from 85.8s → 41.5s (51.6% reduction, 2.07x faster).
-
-### PR Evaluator
-
-Test against real GitHub PRs — fetches PR metadata, clones repo at pre-PR state, runs the pipeline, compares output:
-
-```bash
-python pr_evaluator.py --repo owner/repo --pr 42 --provider groq
-```
+**Key finding**: RAG eliminated a CWE-89 false positive by providing the repo's actual SQLAlchemy ORM patterns.
 
 ```bash
 # Run evaluation yourself
 python evaluation_harness.py --provider groq --task simple-health-check
+
+# Test against real GitHub PRs
+python pr_evaluator.py --repo owner/repo --pr 42 --provider groq
 ```
 
 ## Project Structure
@@ -135,7 +163,7 @@ python evaluation_harness.py --provider groq --task simple-health-check
 ```
 contextual-architect/
 ├── agents/                     # Core multi-agent pipeline (24 modules)
-│   ├── orchestrator.py         # Coordinates all agents
+│   ├── orchestrator.py         # Coordinates all 9 agents
 │   ├── historian.py            # Convention detection
 │   ├── architect.py            # Structure mapping
 │   ├── planner.py              # Structured planning
@@ -145,52 +173,33 @@ contextual-architect/
 │   ├── test_generator.py       # Test creation
 │   ├── safe_writer.py          # Permission-based output
 │   ├── style_fingerprint.py    # Style extraction
-│   ├── system_prompts.py       # 8 constraint-based prompts
 │   ├── llm_client.py           # 7 provider support
-│   ├── clarification_handler.py # Ambiguity resolution
-│   ├── feedback_reader.py      # Learning loop
-│   └── tests/                  # 245 unit tests
+│   ├── setup_wizard.py         # Interactive first-time setup
+│   ├── trace_logger.py         # Distillation data collection
+│   └── tests/                  # 246 unit tests
 ├── data_pipeline/              # PR evolution data collection
-│   └── src/
-│       ├── pr_evolution/       # Custom GitHub PR extractor
-│       └── codereviewer/       # Microsoft CodeReviewer dataset
 ├── rag/                        # RAG layer (ChromaDB + AST chunking)
-│   ├── code_chunker.py         # AST-aware Python, regex JS/TS/Go
-│   ├── vector_store.py         # ChromaDB with abstract base class
-│   ├── retriever.py            # Agent-facing search interface
-│   └── indexer.py              # Incremental repo indexer
-├── storage/                    # Structured data persistence
-│   └── sqlite_store.py         # Runs, telemetry, feedback (SQLite)
+├── storage/                    # SQLite persistence
 ├── evaluation_harness.py       # Real-LLM testing framework
-├── pr_evaluator.py             # GitHub PR evaluation (real-world testing)
-└── evaluation_results/         # JSON results + generated code
+└── pr_evaluator.py             # GitHub PR evaluation
 ```
 
-## Progress
+## Roadmap
 
-- [x] **Phase 1**: Data pipeline (PR extractor + CodeReviewer dataset)
-- [x] **Phase 3**: Multi-agent pipeline (7 agents + orchestrator)
-- [x] **Phase 3**: 7 LLM providers supported
-- [x] **Phase 3**: Constraint prompts (CWE denylist, CoAT reasoning)
-- [x] **Phase 3**: Feedback loop (clarification + learning)
-- [x] **Phase 5**: Evaluation harness (100% constraint compliance with RAG)
-- [x] **RAG Layer**: ChromaDB + AST chunking + incremental indexing (174 chunks, 44 files)
-- [x] **Storage**: SQLite for telemetry, feedback, pipeline runs
-- [x] **PR Evaluator**: Test against real GitHub PRs
-- [x] **332 tests** passing
-- [x] **Research Paper**: IEEE submission on architectural compliance
-- [ ] **Phase 2**: Model fine-tuning (LoRA — future scope)
-- [ ] **Phase 4**: Deep security integration (bandit, gosec)
-- [ ] **MCP Integration**: Live VS Code/GitHub connection
-
-## Research & Prior Art
-
-- **Microsoft CodeReviewer**: [Paper](https://arxiv.org/abs/2203.09095) | [Dataset](https://zenodo.org/records/6900648)
-- **Our contribution**: Multi-agent orchestration + real-time codebase awareness + constraint-based prompts + automated compliance validation
+- [x] 9-agent pipeline with parallel discovery
+- [x] 7 LLM providers with auto-detection
+- [x] RAG layer (ChromaDB + AST chunking)
+- [x] Interactive setup wizard (`macro --setup`)
+- [x] Trace logging for distillation data collection
+- [x] 246 tests passing
+- [ ] VS Code extension
+- [ ] Model distillation (QLoRA from pipeline traces)
+- [ ] SimpleMem long-term memory integration
+- [ ] Multi-file refactoring support
 
 ## License
 
-MIT License — See [LICENSE](LICENSE)
+Apache License 2.0 — See [LICENSE](LICENSE)
 
 ## Author
 

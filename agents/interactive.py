@@ -48,41 +48,71 @@ class Colors:
         return f"{color}{text}{Colors.RESET}"
 
 
+def _can_render_unicode() -> bool:
+    """Check if terminal supports Unicode box-drawing characters."""
+    try:
+        test = "\u256d\u2500\u256e\u2502\u2570\u256f\u25c9\u2192"
+        test.encode(sys.stdout.encoding or "utf-8")
+        return True
+    except (UnicodeEncodeError, UnicodeDecodeError, LookupError):
+        return False
+
+
 def print_banner(repo_path: str, provider: str, lang: str, config: AgentConfig):
-    """Print the startup banner."""
+    """Print the startup banner -- adapts to terminal capabilities."""
+    use_unicode = _can_render_unicode()
     print()
-    # ASCII brain logo — represents the multi-agent orchestrator
-    print(Colors.colored("      \u256d\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256e", Colors.RED))
-    print(Colors.colored("      \u2502", Colors.RED) + Colors.colored("  \u2e3b\u2022\u2500\u2500\u2022\u2e3b  ", Colors.YELLOW) + Colors.colored("\u2502", Colors.RED))
-    print(Colors.colored("      \u2502", Colors.RED) + Colors.colored(" \u2502\u256d\u2500\u256e\u2570\u256e\u256d\u2502 ", Colors.YELLOW) + Colors.colored("\u2502", Colors.RED) + Colors.colored("  MACRO", Colors.BOLD + Colors.WHITE))
-    print(Colors.colored("      \u2502", Colors.RED) + Colors.colored("  \u2570\u2500\u256e\u256d\u2500\u256f  ", Colors.YELLOW) + Colors.colored("\u2502", Colors.RED) + Colors.colored("  Multi-Agent Contextual Repository Orchestrator", Colors.DIM))
-    print(Colors.colored("      \u2502", Colors.RED) + Colors.colored("   \u2570\u256f    ", Colors.YELLOW) + Colors.colored("\u2502", Colors.RED))
-    print(Colors.colored("      \u2570\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256f", Colors.RED))
+
+    # MACRO logo -- safe ASCII art (works on every terminal)
+    logo = r"""
+      __  __    _    ____ ____   ___
+     |  \/  |  / \  / ___|  _ \ / _ \
+     | |\/| | / _ \| |   | |_) | | | |
+     | |  | |/ ___ \ |___|  _ <| |_| |
+     |_|  |_/_/   \_\____|_| \_\\___/
+    """
+    print(Colors.colored(logo, Colors.CYAN))
+    print(Colors.colored("     Multi-Agent Contextual Repository Orchestrator", Colors.DIM))
     print()
-    
-    # Agent pipeline visualization
-    print(Colors.colored("  Agents: ", Colors.DIM) + 
-          Colors.colored("\u25c9 ", Colors.BLUE) + Colors.colored("Historian", Colors.DIM) +
-          Colors.colored(" \u2192 ", Colors.DIM) +
-          Colors.colored("\u25c9 ", Colors.MAGENTA) + Colors.colored("Planner", Colors.DIM) +
-          Colors.colored(" \u2192 ", Colors.DIM) +
-          Colors.colored("\u25c9 ", Colors.GREEN) + Colors.colored("Implementer", Colors.DIM) +
-          Colors.colored(" \u2192 ", Colors.DIM) +
-          Colors.colored("\u25c9 ", Colors.RED) + Colors.colored("Reviewer", Colors.DIM))
+
+    # Agent pipeline
+    if use_unicode:
+        print(Colors.colored("  Agents: ", Colors.DIM) +
+              Colors.colored("\u25c9 ", Colors.BLUE) + Colors.colored("Historian", Colors.DIM) +
+              Colors.colored(" \u2192 ", Colors.DIM) +
+              Colors.colored("\u25c9 ", Colors.MAGENTA) + Colors.colored("Planner", Colors.DIM) +
+              Colors.colored(" \u2192 ", Colors.DIM) +
+              Colors.colored("\u25c9 ", Colors.GREEN) + Colors.colored("Implementer", Colors.DIM) +
+              Colors.colored(" \u2192 ", Colors.DIM) +
+              Colors.colored("\u25c9 ", Colors.RED) + Colors.colored("Reviewer", Colors.DIM))
+    else:
+        print(Colors.colored("  Agents: ", Colors.DIM) +
+              Colors.colored("* ", Colors.BLUE) + Colors.colored("Historian", Colors.DIM) +
+              Colors.colored(" -> ", Colors.DIM) +
+              Colors.colored("* ", Colors.MAGENTA) + Colors.colored("Planner", Colors.DIM) +
+              Colors.colored(" -> ", Colors.DIM) +
+              Colors.colored("* ", Colors.GREEN) + Colors.colored("Implementer", Colors.DIM) +
+              Colors.colored(" -> ", Colors.DIM) +
+              Colors.colored("* ", Colors.RED) + Colors.colored("Reviewer", Colors.DIM))
     print()
-    
-    # Config
-    print(Colors.colored("  \u250c\u2500 Config \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510", Colors.DIM))
-    print(Colors.colored("  \u2502", Colors.DIM) + "  > Repo:     " + Colors.colored(repo_path, Colors.WHITE))
-    print(Colors.colored("  \u2502", Colors.DIM) + "  > Language: " + Colors.colored(lang, Colors.CYAN))
-    print(Colors.colored("  \u2502", Colors.DIM) + "  > Provider: " + Colors.colored(provider, Colors.GREEN))
+
+    # Config box
+    h_line = "\u2500" if use_unicode else "-"
+    tl, tr, bl, br, v = ("\u250c", "\u2510", "\u2514", "\u2518", "\u2502") if use_unicode else ("+", "+", "+", "+", "|")
+    header = f"  {tl}{h_line} Config {h_line * 41}{tr}"
+    footer = f"  {bl}{h_line * 50}{br}"
+
+    print(Colors.colored(header, Colors.DIM))
+    print(Colors.colored(f"  {v}", Colors.DIM) + "  > Repo:     " + Colors.colored(repo_path, Colors.WHITE))
+    print(Colors.colored(f"  {v}", Colors.DIM) + "  > Language: " + Colors.colored(lang, Colors.CYAN))
+    print(Colors.colored(f"  {v}", Colors.DIM) + "  > Provider: " + Colors.colored(provider, Colors.GREEN))
     if config.planner_provider:
-        print(Colors.colored("  \u2502", Colors.DIM) + "  > Planner:  " + Colors.colored(config.planner_provider, Colors.YELLOW))
+        print(Colors.colored(f"  {v}", Colors.DIM) + "  > Planner:  " + Colors.colored(config.planner_provider, Colors.YELLOW))
     if config.implementer_provider:
-        print(Colors.colored("  \u2502", Colors.DIM) + "  > Implmtr:  " + Colors.colored(config.implementer_provider, Colors.YELLOW))
-    print(Colors.colored("  \u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518", Colors.DIM))
+        print(Colors.colored(f"  {v}", Colors.DIM) + "  > Implmtr:  " + Colors.colored(config.implementer_provider, Colors.YELLOW))
+    print(Colors.colored(footer, Colors.DIM))
     print()
-    
+
     # Quick start hints
     print(Colors.colored("  [?] Chat: ", Colors.CYAN) + Colors.colored("Ask questions about your code", Colors.DIM))
     print(Colors.colored("  [+] Build: ", Colors.GREEN) + Colors.colored("Type what you want to build", Colors.DIM))
@@ -534,7 +564,7 @@ async def run_single_request(
         print("\n  [!] Request interrupted.")
         return None
     except Exception as e:
-        print(Colors.colored(f"\n  ❌ Error: {e}", Colors.RED))
+        print(Colors.colored(f"\n  [X] Error: {e}", Colors.RED))
         if verbose:
             import traceback
             traceback.print_exc()
@@ -616,7 +646,7 @@ async def interactive_session(args) -> int:
     while True:
         try:
             # Prompt
-            prompt = Colors.colored("  ❯ ", Colors.GREEN + Colors.BOLD)
+            prompt = Colors.colored("  > ", Colors.GREEN + Colors.BOLD)
             user_input = input(prompt).strip()
             
             if not user_input:
