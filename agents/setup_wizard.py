@@ -357,11 +357,14 @@ def run_setup():
 
     from .config import AgentConfig
 
+    # When user picks a smart provider, route BOTH planner AND implementer to it
     config = AgentConfig(
         llm_provider=provider_id,
         llm_api_key=api_key,
         planner_provider=planner_provider,
         planner_api_key=planner_api_key,
+        implementer_provider=planner_provider,  # Same smart provider for implementer
+        implementer_api_key=planner_api_key,
     )
 
     path = config.save_to_file()

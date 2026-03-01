@@ -177,8 +177,17 @@ class AgentConfig:
         try:
             if os.name != 'nt':  # Unix/Mac
                 os.chmod(path, 0o600)
+            else:
+                # Windows: no chmod equivalent without win32security
+                import warnings
+                warnings.warn(
+                    f"Config file contains API keys in plaintext: {path}\n"
+                    f"On Windows, ensure only your user account has access to this file.",
+                    UserWarning,
+                    stacklevel=2,
+                )
         except OSError:
-            pass  # Best effort — some filesystems don't support chmod
+            pass  # Best effort
         
         return path
 
@@ -194,14 +203,45 @@ class AgentConfig:
         else:
             base = cls()
         
-        # Layer env vars on top
-        env_config = cls.from_env()
-        # Only override fields that were explicitly set in env
-        for field_name in cls.__dataclass_fields__:
-            env_val = getattr(env_config, field_name)
-            default_val = cls.__dataclass_fields__[field_name].default
-            if env_val != default_val:
-                setattr(base, field_name, env_val)
+        # Layer env vars on top (only override if explicitly set)
+        env_map = {
+            "CA_LLM_PROVIDER": "llm_provider",
+            "CA_LLM_MODEL": "llm_model",
+            "CA_LLM_API_KEY": "llm_api_key",
+            "CA_LLM_TEMPERATURE": "llm_temperature",
+            "CA_LLM_MAX_TOKENS": "llm_max_tokens",
+            "CA_MAX_RETRIES": "max_retries",
+            "CA_AUTO_APPROVE_NEW_FILES": "auto_approve_new_files",
+            "CA_USE_EXTERNAL_TOOLS": "use_external_tools",
+            "CA_REVIEWER_TIMEOUT": "reviewer_timeout",
+            "CA_MAX_FILES_TO_SCAN": "max_files_to_scan",
+            "CA_MAX_LINE_LENGTH": "max_line_length",
+            "CA_LOG_LEVEL": "log_level",
+            "CA_LOG_FORMAT": "log_format",
+            "CA_BACKUP_DIR": "backup_dir",
+        }
+        
+        # Only override fields where the env var is actually present
+        for env_key, field_name in env_map.items():
+            if os.environ.get(env_key) is not None:
+                setattr(base, field_name, getattr(env_config, field_name))
+        
+        # Also layer provider-specific API keys from env
+        provider_env_keys = [
+            ("GROQ_API_KEY", "groq"),
+            ("GOOGLE_API_KEY", "google"),
+            ("GEMINI_API_KEY", "google"),
+            ("OPENAI_API_KEY", "openai"),
+            ("ANTHROPIC_API_KEY", "anthropic"),
+            ("DEEPSEEK_API_KEY", "deepseek"),
+        ]
+        for env_key, provider in provider_env_keys:
+            if os.environ.get(env_key):
+                # If env has a provider key, override provider + key
+                if not os.environ.get("CA_LLM_PROVIDER"):
+                    base.llm_provider = env_config.llm_provider
+                base.llm_api_key = env_config.llm_api_key
+                break  # First found wins (same priority as detect_provider_from_env)
         
         return base
 
