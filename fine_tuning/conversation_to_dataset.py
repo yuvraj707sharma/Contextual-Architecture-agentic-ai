@@ -30,45 +30,85 @@ def parse_conversation(text: str) -> List[Dict[str, str]]:
     """Parse a markdown conversation into turns.
     
     Supports formats:
-    - "Human: ... Assistant: ..."
-    - "User: ... AI: ..."
+    - "Human: ... Ai: ... Ai thinking: ..."
+    - "### User Input ... ### Planner Response ..."
+    - "User: ... Assistant: ..."
     - "**User**: ... **Assistant**: ..."
-    - "### User\n... ### Assistant\n..."
     """
     turns = []
     
-    # Try multiple patterns
-    patterns = [
-        # Pattern 1: "Human: ... Assistant: ..."
-        r'(?:^|\n)(Human|User|USER):\s*(.*?)(?=\n(?:Human|User|USER|Assistant|AI|ASSISTANT):|\Z)',
-        # Pattern 2: Markdown headers
-        r'(?:^|\n)(?:#{1,3})\s*(Human|User|Assistant|AI)\s*\n(.*?)(?=\n#{1,3}\s*(?:Human|User|Assistant|AI)|\Z)',
-        # Pattern 3: Bold markers
-        r'\*\*(Human|User|Assistant|AI)\*\*[:\s]*(.*?)(?=\*\*(?:Human|User|Assistant|AI)\*\*|\Z)',
+    # Split text into lines for sequential parsing
+    lines = text.split("\n")
+    current_role = None
+    current_content = []
+    
+    # Role markers (checked in order of priority)
+    user_markers = [
+        "Human:", "Human :", "User:", "USER:",
+        "### User Input", "### Human",
+    ]
+    assistant_markers = [
+        "Ai thinking:", "Ai :", "Ai:",
+        "AI:", "Assistant:", "ASSISTANT:",
+        "### Planner Response", "### Assistant", "### AI",
     ]
     
-    for pattern in patterns:
-        matches = re.findall(pattern, text, re.DOTALL | re.IGNORECASE)
-        if matches:
-            for role, content in matches:
-                role = role.strip().lower()
-                content = content.strip()
-                if role in ("human", "user"):
-                    turns.append({"role": "user", "content": content})
-                elif role in ("assistant", "ai"):
-                    turns.append({"role": "assistant", "content": content})
-            break
+    def flush():
+        """Save accumulated content as a turn."""
+        nonlocal current_role, current_content
+        if current_role and current_content:
+            content = "\n".join(current_content).strip()
+            if content:
+                turns.append({"role": current_role, "content": content})
+        current_content = []
     
-    # Fallback: split on common separator patterns
-    if not turns:
-        # Try splitting on "---" or similar dividers between turns
-        parts = re.split(r'\n---+\n|\n\*\*\*+\n', text)
-        for i, part in enumerate(parts):
-            role = "user" if i % 2 == 0 else "assistant"
-            if part.strip():
-                turns.append({"role": role, "content": part.strip()})
+    for line in lines:
+        stripped = line.strip()
+        
+        # Check for user markers
+        matched = False
+        for marker in user_markers:
+            if stripped.startswith(marker) or stripped == marker.rstrip(":"):
+                flush()
+                current_role = "user"
+                # Content after the marker on the same line
+                after = stripped[len(marker):].strip()
+                current_content = [after] if after else []
+                matched = True
+                break
+        
+        if matched:
+            continue
+        
+        # Check for assistant markers
+        for marker in assistant_markers:
+            if stripped.startswith(marker) or stripped == marker.rstrip(":"):
+                flush()
+                current_role = "assistant"
+                after = stripped[len(marker):].strip()
+                current_content = [after] if after else []
+                matched = True
+                break
+        
+        if matched:
+            continue
+        
+        # Regular line — append to current turn
+        if current_role:
+            current_content.append(line)
     
-    return turns
+    # Flush last turn
+    flush()
+    
+    # Merge consecutive same-role turns (e.g., Ai thinking + Ai response)
+    merged = []
+    for turn in turns:
+        if merged and merged[-1]["role"] == turn["role"]:
+            merged[-1]["content"] += "\n\n" + turn["content"]
+        else:
+            merged.append(turn)
+    
+    return merged
 
 
 def extract_code_blocks(text: str) -> List[str]:
