@@ -1,0 +1,16 @@
+# GPU requirements (training, runs on cloud GPU)
+# Install on RunPod/Colab ONLY — these need CUDA
+
+torch>=2.1.0
+transformers>=4.36.0
+datasets>=2.14.0
+peft>=0.7.0
+trl>=0.7.0
+accelerate>=0.25.0
+bitsandbytes>=0.41.0
+
+# Unsloth — fastest QLoRA training
+# Install separately: pip install "unsloth[colab-new] @ git+https://github.com/unslothai/unsloth.git"
+
+# For GGUF export (optional, Unsloth handles this)
+# llama-cpp-python>=0.2.0

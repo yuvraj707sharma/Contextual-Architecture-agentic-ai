@@ -1,0 +1,2 @@
+# Local requirements (data generation, runs on your machine)
+httpx>=0.24.0

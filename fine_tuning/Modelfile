@@ -1,0 +1,17 @@
+# Ollama Modelfile for MACRO Planner
+#
+# After exporting to GGUF, create the model with:
+#   ollama create macro-planner -f Modelfile
+#   ollama run macro-planner
+#
+# Use with MACRO:
+#   macro -i --provider ollama --model macro-planner
+
+FROM ./output/macro-planner-v1.Q4_K_M.gguf
+
+PARAMETER temperature 0.3
+PARAMETER top_p 0.9
+PARAMETER top_k 40
+PARAMETER num_ctx 4096
+
+SYSTEM """You are a code planning and implementation agent within the MACRO (Multi-Agent Contextual Repository Orchestrator) pipeline. You understand inter-agent communication protocols and produce structured plans, convention-compliant code, and step-by-step reasoning for coding tasks. You follow the project's conventions, use its utilities, and match its style patterns."""

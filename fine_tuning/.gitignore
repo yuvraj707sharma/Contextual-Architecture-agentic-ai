@@ -1,0 +1,7 @@
+# Training data (generated, not committed)
+data/
+output/
+
+# Python
+__pycache__/
+*.pyc
