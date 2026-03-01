@@ -137,6 +137,11 @@ Examples:
         action="store_true",
         help="Save current CLI settings to ~/.contextual-architect/config.json",
     )
+    parser.add_argument(
+        "--setup",
+        action="store_true",
+        help="Run interactive first-time setup wizard",
+    )
 
     # Output configuration
     parser.add_argument(
@@ -383,6 +388,12 @@ async def run(args) -> int:
 def main():
     parser = build_parser()
     args = parser.parse_args()
+
+    # Handle --setup wizard
+    if args.setup:
+        from .setup_wizard import run_setup
+        run_setup()
+        sys.exit(0)
 
     # Handle --save-config
     if args.save_config:

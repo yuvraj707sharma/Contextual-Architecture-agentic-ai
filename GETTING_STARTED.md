@@ -40,39 +40,32 @@ pip install -e .
 
 After `pip install -e .` succeeds, the `macro` command works from **anywhere** on your system.
 
-### 1.4 Get Your API Key (Free)
+### 1.4 Run the Setup Wizard
 
-You need at least **one** API key. Pick any:
+```cmd
+macro --setup
+```
+
+This will:
+- Check your system (Python version, dependencies)
+- Ask which API provider you want (Gemini and Groq are FREE)
+- Test your API key works
+- Optionally configure a second provider for smarter planning
+- Save everything to config
+
+> TIP: If you just want a quick setup without the wizard:
+> ```cmd
+> macro --save-config --provider google --api-key YOUR_KEY_HERE
+> ```
+
+**Free API key sources:**
 
 | Provider | Free Tier | Get Key At |
 |----------|-----------|------------|
+| **Google Gemini** (recommended) | 15 req/min | https://aistudio.google.com/apikey |
 | **Groq** (recommended) | 30 req/min | https://console.groq.com |
-| **Google Gemini** | 15 req/min | https://aistudio.google.com/apikey |
 | **OpenAI** | Paid only | https://platform.openai.com |
 | **Anthropic** | Paid only | https://console.anthropic.com |
-
-### 1.5 Save Your Config (One-Time)
-
-```cmd
-:: Single provider (Groq only)
-macro --save-config --provider groq --api-key gsk_YOUR_KEY_HERE
-
-:: Multi-provider (Groq + Gemini -- best quality)
-set GROQ_API_KEY=gsk_YOUR_KEY_HERE
-set GOOGLE_API_KEY=AIza_YOUR_KEY_HERE
-macro --save-config --provider groq --planner-provider google
-```
-
-Or create the config file manually at `C:\Users\<YourName>\.contextual-architect\config.json`:
-
-```json
-{
-  "llm_provider": "groq",
-  "llm_api_key": "gsk_YOUR_GROQ_KEY",
-  "planner_provider": "google",
-  "planner_api_key": "AIza_YOUR_GEMINI_KEY",
-  "default_language": "python"
-}
 ```
 
 > After this, you never need to set API keys again. They're saved permanently.
