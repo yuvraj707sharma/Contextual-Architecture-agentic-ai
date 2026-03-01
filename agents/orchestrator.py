@@ -36,6 +36,7 @@ from .feedback import FeedbackCollector
 from .output_validator import validate_agent_output, validate_reviewer_verdict, try_extract_json
 from .clarification_handler import ClarificationHandler
 from .feedback_reader import FeedbackReader
+from .trace_logger import TraceLogger
 
 
 @dataclass
@@ -256,6 +257,19 @@ class Orchestrator:
         self.logger.debug(f"Request: {user_request[:80]}")
         self.logger.debug(f"Repo: {repo_path} | Language: {language}")
         
+        # ── TRACE LOGGING (for future distillation) ──────────────
+        tracer = TraceLogger()
+        try:
+            tracer.set_metadata(
+                user_request=user_request,
+                repo_path=repo_path,
+                language=language,
+                provider=self.config.llm_provider,
+                model=self.config.llm_model or "",
+            )
+        except Exception:
+            pass  # Tracing should never break the pipeline
+        
         # ── PR SEARCH + PARALLEL DISCOVERY PHASE ─────────────────
         # PR Search, StyleAnalyzer, Historian, and Architect are all
         # independent — they scan different data sources.
@@ -330,6 +344,28 @@ class Orchestrator:
         result.target_file = architect_response.data.get("target_file", "")
         workspace.write_discovery("architect", architect_response.data)
         
+        # Log discovery traces
+        try:
+            tracer.log_agent(
+                "historian", user_request[:200],
+                historian_response.summary,
+                historian_response.data,
+                historian_response.success,
+            )
+            tracer.log_agent(
+                "architect", user_request[:200],
+                architect_response.summary,
+                architect_response.data,
+                architect_response.success,
+            )
+            tracer.log_agent(
+                "style", user_request[:200],
+                str(style_fingerprint.function_naming),
+                style_fingerprint.to_dict(),
+            )
+        except Exception:
+            pass
+        
         # ── CLARIFICATION CHECK ──────────────────────────────────
         # Handle CLARIFICATION_NEEDED signals from Architect.
         clarification_handler = ClarificationHandler()
@@ -370,6 +406,16 @@ class Orchestrator:
         result.agent_summaries["planner"] = planner_response.summary
         plan_markdown = planner_response.data.get("plan_markdown", "")
         complexity = planner_response.data.get("complexity", "medium")
+        
+        try:
+            tracer.log_agent(
+                "planner", user_request[:200],
+                planner_response.summary,
+                planner_response.data,
+                planner_response.success,
+            )
+        except Exception:
+            pass
         
         # Write plan to workspace — this is re-read on every retry
         workspace.write_plan(plan_markdown)
@@ -534,6 +580,24 @@ class Orchestrator:
                 )
                 result.generated_code = generated_code
                 result.target_file = target_file
+                
+                # Log successful implementation + review
+                try:
+                    tracer.log_agent(
+                        "implementer", plan_markdown[:300],
+                        impl_response.summary,
+                        {"code_len": len(generated_code), "file": target_file},
+                        True, attempt,
+                    )
+                    tracer.log_agent(
+                        "reviewer", f"code:{len(generated_code)} chars",
+                        validation.summary,
+                        {"passed": True},
+                        True, attempt,
+                    )
+                except Exception:
+                    pass
+                
                 break
             else:
                 metrics.retries += 1
@@ -628,6 +692,18 @@ class Orchestrator:
             )
         except Exception as e:
             self.logger.debug(f"Feedback collection skipped: {e}")
+        
+        # ── SAVE TRACE (for distillation) ─────────────────────────
+        try:
+            tracer.log_result(
+                success=result.success,
+                attempts=result.attempts,
+                generated_code_len=len(result.generated_code),
+                errors=result.errors,
+            )
+            tracer.save()
+        except Exception:
+            pass  # Never break the pipeline
         
         return result
     
