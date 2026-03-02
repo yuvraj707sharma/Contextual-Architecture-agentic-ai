@@ -162,11 +162,13 @@ class ProjectSnapshot:
             "files_sample": [f.to_dict() for f in self.file_tree[:50]],
         }
     
-    def to_prompt_context(self) -> str:
-        """Convert to a lean prompt string for LLM agents.
+    def to_prompt_context(self, detailed: bool = False) -> str:
+        """Convert to a prompt string for LLM agents.
         
-        Per ETH Zurich research: only include NON-OBVIOUS findings.
-        Skip things agents can discover from reading individual files.
+        Args:
+            detailed: If True, include FULL file tree + ALL dependencies.
+                      Used by Planner/Implementer that need complete awareness.
+                      If False, include only key findings (for fast agents).
         """
         lines = []
         lines.append("## Project Environment Snapshot")
@@ -203,17 +205,47 @@ class ProjectSnapshot:
         if self.entry_points:
             lines.append(f"Entry Points: {', '.join(self.entry_points[:5])}")
         
-        # Key dependencies (top 15 only)
-        if self.dependencies:
-            top_deps = list(self.dependencies.items())[:15]
-            dep_str = ", ".join(f"{k}@{v}" if v else k for k, v in top_deps)
-            lines.append(f"Key Dependencies: {dep_str}")
-        
-        # Directory structure (compact)
-        if self.dir_tree:
-            lines.append("\nDirectory Structure:")
-            for d in self.dir_tree[:20]:
-                lines.append(f"  {d}/")
+        if detailed:
+            # ── DETAILED MODE: Full project map for Planner/Implementer ──
+            
+            # ALL dependencies with versions
+            if self.dependencies:
+                lines.append("\n### Dependencies")
+                for name, version in sorted(self.dependencies.items()):
+                    lines.append(f"  {name}: {version}" if version else f"  {name}")
+            
+            if self.dev_dependencies:
+                lines.append("\n### Dev Dependencies")
+                for name, version in sorted(self.dev_dependencies.items()):
+                    lines.append(f"  {name}: {version}" if version else f"  {name}")
+            
+            # Full file tree with sizes
+            lines.append("\n### Complete File Tree")
+            for entry in self.file_tree:
+                size_kb = entry.size_bytes / 1024
+                if size_kb >= 1:
+                    lines.append(f"  {entry.path} ({size_kb:.1f}KB)")
+                else:
+                    lines.append(f"  {entry.path} ({entry.size_bytes}B)")
+            
+            # Config files
+            if self.config_files:
+                lines.append(f"\n### Config Files: {', '.join(self.config_files)}")
+            
+        else:
+            # ── LEAN MODE: Key findings only for fast agents ──
+            
+            # Key dependencies (top 15 only)
+            if self.dependencies:
+                top_deps = list(self.dependencies.items())[:15]
+                dep_str = ", ".join(f"{k}@{v}" if v else k for k, v in top_deps)
+                lines.append(f"Key Dependencies: {dep_str}")
+            
+            # Directory structure (compact)
+            if self.dir_tree:
+                lines.append("\nDirectory Structure:")
+                for d in self.dir_tree[:20]:
+                    lines.append(f"  {d}/")
         
         return "\n".join(lines)
 

@@ -660,6 +660,13 @@ class PlannerAgent(BaseAgent):
             f"\n## Complexity\n{complexity}",
         ]
 
+        # Add project environment snapshot (FULL detail for Planner)
+        project_context = context.prior_context.get("project_context_detailed", "")
+        if not project_context:
+            project_context = context.prior_context.get("project_context", "")
+        if project_context:
+            prompt_parts.append(f"\n{project_context}")
+
         # ── GUARDRAIL: Detect explicit file references in request ──
         user_referenced_files = self._extract_file_references(
             context.user_request, context.repo_path, context.language

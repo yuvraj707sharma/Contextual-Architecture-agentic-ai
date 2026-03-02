@@ -147,6 +147,14 @@ class ImplementerAgent(BaseAgent):
         sections.append(f"Language: {context.language}")
         sections.append("")
         
+        # Project environment snapshot (FULL detail — file tree, deps, frameworks)
+        project_context = context.prior_context.get("project_context_detailed", "")
+        if not project_context:
+            project_context = context.prior_context.get("project_context", "")
+        if project_context:
+            sections.append(project_context)
+            sections.append("")
+        
         # Historian context
         historian = context.prior_context.get("historian", {})
         if historian:

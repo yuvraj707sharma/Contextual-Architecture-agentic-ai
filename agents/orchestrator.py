@@ -286,6 +286,10 @@ class Orchestrator:
             project_snapshot = scanner.scan()
             context.prior_context["project_snapshot"] = project_snapshot.to_dict()
             context.prior_context["project_context"] = project_snapshot.to_prompt_context()
+            # Detailed context for Planner/Implementer — includes FULL file tree, 
+            # ALL deps, config files. These agents need complete project awareness
+            # because they get ONE shot — they can't browse the filesystem themselves.
+            context.prior_context["project_context_detailed"] = project_snapshot.to_prompt_context(detailed=True)
             
             # Emit key findings as reasoning
             self.reasoning.emit(
