@@ -37,6 +37,8 @@ from .output_validator import validate_agent_output, validate_reviewer_verdict, 
 from .clarification_handler import ClarificationHandler
 from .feedback_reader import FeedbackReader
 from .trace_logger import TraceLogger
+from .project_scanner import ProjectScanner
+from .reasoning_display import ReasoningDisplay
 
 
 @dataclass
@@ -177,6 +179,7 @@ class Orchestrator:
         
         # Utilities
         self.feedback = FeedbackCollector()
+        self.reasoning = ReasoningDisplay(streaming=True)
         
         # PR Search
         self.pr_searcher = PRSearcher()
@@ -270,10 +273,73 @@ class Orchestrator:
         except Exception:
             pass  # Tracing should never break the pipeline
         
+        # ── Reset reasoning for this run ──────────────────────────
+        self.reasoning.clear()
+        
+        # ── PROJECT SCANNING PHASE ────────────────────────────────
+        # Runs FIRST — gives all agents full project awareness.
+        # No LLM calls, pure filesystem. ~100ms.
+        self.reasoning.emit("scanner", f"Scanning project at {Path(repo_path).name}...")
+        
+        try:
+            scanner = ProjectScanner(repo_path, language)
+            project_snapshot = scanner.scan()
+            context.prior_context["project_snapshot"] = project_snapshot.to_dict()
+            context.prior_context["project_context"] = project_snapshot.to_prompt_context()
+            
+            # Emit key findings as reasoning
+            self.reasoning.emit(
+                "scanner",
+                f"Found {project_snapshot.total_files} files across "
+                f"{project_snapshot.total_dirs} directories",
+            )
+            if project_snapshot.frameworks:
+                self.reasoning.emit(
+                    "scanner",
+                    f"Detected frameworks: {', '.join(project_snapshot.frameworks)}",
+                )
+            if project_snapshot.auth_systems:
+                self.reasoning.emit(
+                    "scanner",
+                    f"Auth system: {', '.join(project_snapshot.auth_systems)}",
+                )
+            if project_snapshot.databases:
+                self.reasoning.emit(
+                    "scanner",
+                    f"Database: {', '.join(project_snapshot.databases)}",
+                )
+            if project_snapshot.package_manager:
+                self.reasoning.emit(
+                    "scanner",
+                    f"Package manager: {project_snapshot.package_manager}"
+                    + (f", test runner: {project_snapshot.test_runner}" if project_snapshot.test_runner else ""),
+                )
+            if project_snapshot.has_ci:
+                self.reasoning.emit(
+                    "scanner",
+                    f"CI/CD: {project_snapshot.ci_platform}",
+                )
+            
+            # Trace log
+            try:
+                tracer.log_agent(
+                    "scanner", user_request[:200],
+                    f"{project_snapshot.total_files} files, "
+                    f"frameworks={project_snapshot.frameworks}",
+                    project_snapshot.to_dict(),
+                )
+            except Exception:
+                pass
+        except Exception as e:
+            self.logger.debug(f"Project scanner skipped: {e}")
+            self.reasoning.emit("scanner", f"Scan skipped (non-critical): {e}")
+        
         # ── PR SEARCH + PARALLEL DISCOVERY PHASE ─────────────────
         # PR Search, StyleAnalyzer, Historian, and Architect are all
         # independent — they scan different data sources.
         # Running them all concurrently for maximum speed.
+        
+        self.reasoning.emit("discovery", "Running parallel discovery (Style + History + Architecture)...")
         
         self.logger.info(
             "Starting parallel discovery (PR Search + Style + Historian + Architect)",
@@ -333,6 +399,7 @@ class Orchestrator:
         result.agent_summaries["historian"] = historian_response.summary
         context.prior_context["historian"] = historian_response.data
         workspace.write_discovery("historian", historian_response.data)
+        self.reasoning.emit("historian", historian_response.summary)
         
         # Process Architect result
         if not architect_response.success:
@@ -343,6 +410,7 @@ class Orchestrator:
         context.prior_context["architect"] = architect_response.data
         result.target_file = architect_response.data.get("target_file", "")
         workspace.write_discovery("architect", architect_response.data)
+        self.reasoning.emit("architect", architect_response.summary)
         
         # Log discovery traces
         try:
@@ -389,6 +457,8 @@ class Orchestrator:
         # Creates a structured plan BEFORE any code generation.
         # The plan is written to workspace/plan.md and re-read
         # by the Implementer on every retry attempt.
+        
+        self.reasoning.emit("planner", f"Planning: {user_request[:80]}...")
         
         self.logger.info(
             "Running Planner Agent",
@@ -451,6 +521,7 @@ class Orchestrator:
             f"Plan created: {complexity} complexity",
             extra={"agent": "planner"},
         )
+        self.reasoning.emit("planner", f"Complexity: {complexity}, {planner_response.summary}")
         
         # ── ALIGNMENT PHASE (medium/complex only) ────────────────
         if complexity in ("medium", "complex"):
@@ -542,6 +613,11 @@ class Orchestrator:
             context.prior_context["plan_markdown"] = fresh_plan
             
             # Generate code
+            self.reasoning.emit(
+                "implementer",
+                f"Generating code (attempt {attempt}/{max_retries})..."
+                + (f" Target: {result.target_file}" if result.target_file else ""),
+            )
             with timed_operation(self.logger, f"implementer_attempt_{attempt}"):
                 impl_response = await self.implementer.process(context)
             
@@ -578,6 +654,7 @@ class Orchestrator:
                     f"Validation passed: {validation.summary}",
                     extra={"agent": "reviewer"},
                 )
+                self.reasoning.emit("reviewer", f"Validation passed: {validation.summary}")
                 result.generated_code = generated_code
                 result.target_file = target_file
                 
@@ -626,6 +703,7 @@ class Orchestrator:
         
         # ── TEST GENERATION PHASE ────────────────────────────────
         if result.generated_code:
+            self.reasoning.emit("test_generator", "Generating tests for the implementation...")
             self.logger.info(
                 "Running Test Generator",
                 extra={"agent": "orchestrator", "step": "test_generator"},
@@ -695,6 +773,12 @@ class Orchestrator:
         
         # ── SAVE TRACE (for distillation) ─────────────────────────
         try:
+            # Include reasoning steps in trace for training data
+            tracer.log_agent(
+                "reasoning_display", "pipeline",
+                self.reasoning.get_summary()[:500],
+                {"steps": self.reasoning.to_trace_data()},
+            )
             tracer.log_result(
                 success=result.success,
                 attempts=result.attempts,
@@ -704,6 +788,9 @@ class Orchestrator:
             tracer.save()
         except Exception:
             pass  # Never break the pipeline
+        
+        # Store reasoning in result for display
+        result.context["reasoning"] = self.reasoning.get_summary()
         
         return result
     
