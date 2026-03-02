@@ -61,6 +61,108 @@ class AgentConfig:
     backup_dir: Optional[str] = None  # None → .ai_backups in project
     default_language: str = "python"
 
+    # ── .macro.yaml overrides ─────────────────────────────
+    # These can be set per-project via .macro.yaml
+    security_cwe_denylist: list = field(default_factory=list)  # e.g., ["CWE-78", "CWE-89"]
+    security_require_reviewer: bool = True
+    ignore_patterns: list = field(default_factory=list)  # e.g., ["migrations/", "generated/"]
+    style_naming: Optional[str] = None  # e.g., "snake_case"
+    style_max_line_length: Optional[int] = None
+    style_logging: Optional[str] = None  # e.g., "structlog"
+
+    @classmethod
+    def from_project_yaml(cls, repo_path: str) -> "AgentConfig":
+        """Load config from .macro.yaml in the project root.
+        
+        This is a per-project config that teams check into git.
+        It layers on top of the user config (env vars still override).
+        
+        .macro.yaml format:
+            language: python
+            test_runner: pytest
+            style:
+              naming: snake_case
+              max_line_length: 100
+              logging: structlog
+            agents:
+              fast_provider: groq
+              smart_provider: google
+            security:
+              cwe_denylist: [CWE-78, CWE-89, CWE-502]
+              require_reviewer: true
+            ignore:
+              - "migrations/"
+              - "generated/"
+        """
+        import importlib
+        
+        yaml_path = Path(repo_path) / ".macro.yaml"
+        if not yaml_path.exists():
+            yaml_path = Path(repo_path) / ".macro.yml"
+        if not yaml_path.exists():
+            return cls()  # No project config, return defaults
+        
+        try:
+            yaml = importlib.import_module("yaml")
+            data = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
+        except ImportError:
+            # YAML not installed, try JSON fallback
+            data = json.loads(yaml_path.read_text(encoding="utf-8"))
+        
+        if not isinstance(data, dict):
+            return cls()
+        
+        kwargs: Dict[str, Any] = {}
+        
+        # Top-level fields
+        if "language" in data:
+            kwargs["default_language"] = data["language"]
+        if "test_runner" in data:
+            pass  # Scanner detects this; log for reference
+        if "max_retries" in data:
+            kwargs["max_retries"] = int(data["max_retries"])
+        
+        # Style section
+        style = data.get("style", {})
+        if isinstance(style, dict):
+            if "naming" in style:
+                kwargs["style_naming"] = style["naming"]
+            if "max_line_length" in style:
+                kwargs["style_max_line_length"] = int(style["max_line_length"])
+                kwargs["max_line_length"] = int(style["max_line_length"])
+            if "logging" in style:
+                kwargs["style_logging"] = style["logging"]
+        
+        # Agents section (provider routing)
+        agents = data.get("agents", {})
+        if isinstance(agents, dict):
+            if "fast_provider" in agents:
+                kwargs["llm_provider"] = agents["fast_provider"]
+            if "smart_provider" in agents:
+                kwargs["planner_provider"] = agents["smart_provider"]
+                kwargs["implementer_provider"] = agents["smart_provider"]
+        
+        # Security section
+        security = data.get("security", {})
+        if isinstance(security, dict):
+            if "cwe_denylist" in security:
+                kwargs["security_cwe_denylist"] = list(security["cwe_denylist"])
+            if "require_reviewer" in security:
+                kwargs["security_require_reviewer"] = bool(security["require_reviewer"])
+        
+        # Ignore patterns
+        ignore = data.get("ignore", [])
+        if isinstance(ignore, list):
+            kwargs["ignore_patterns"] = ignore
+        
+        # Logging
+        if "log_level" in data:
+            kwargs["log_level"] = data["log_level"]
+        if "log_format" in data:
+            kwargs["log_format"] = data["log_format"]
+        
+        return cls(**kwargs)
+
     @classmethod
     def from_env(cls) -> "AgentConfig":
         """Load config from environment variables.

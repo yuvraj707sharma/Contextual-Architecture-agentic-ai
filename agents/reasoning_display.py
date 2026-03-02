@@ -13,8 +13,8 @@ Usage in agents:
 
 import sys
 import time
-from dataclasses import dataclass, field
-from typing import List, Dict, Callable, Optional
+from dataclasses import dataclass
+from typing import List, Dict, Optional
 
 
 @dataclass

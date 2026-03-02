@@ -19,7 +19,7 @@ import re
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Set
+from typing import List, Dict, Any, Optional
 
 from .logger import get_logger
 
@@ -219,14 +219,17 @@ class ProjectSnapshot:
                 for name, version in sorted(self.dev_dependencies.items()):
                     lines.append(f"  {name}: {version}" if version else f"  {name}")
             
-            # Full file tree with sizes
+            # File tree with sizes (capped at 500 to stay within token budget)
+            max_files = 500
             lines.append("\n### Complete File Tree")
-            for entry in self.file_tree:
+            for entry in self.file_tree[:max_files]:
                 size_kb = entry.size_bytes / 1024
                 if size_kb >= 1:
                     lines.append(f"  {entry.path} ({size_kb:.1f}KB)")
                 else:
                     lines.append(f"  {entry.path} ({entry.size_bytes}B)")
+            if len(self.file_tree) > max_files:
+                lines.append(f"  ... and {len(self.file_tree) - max_files} more files")
             
             # Config files
             if self.config_files:
@@ -263,8 +266,10 @@ class ProjectScanner:
         self.repo_path = Path(repo_path)
         self.language = language
         self.logger = get_logger("scanner")
-        self._all_imports: Set[str] = set()
+        self._all_imports: set = set()
         self._all_file_content_cache: Dict[str, str] = {}
+        self._cache_total_bytes: int = 0
+        self._cache_max_bytes: int = 5 * 1024 * 1024  # 5MB total cap
     
     def scan(self) -> ProjectSnapshot:
         """Run the full project scan. Returns a ProjectSnapshot."""
@@ -313,11 +318,16 @@ class ProjectScanner:
         """Walk the directory tree, respecting .gitignore-style skips."""
         dirs_seen = set()
         
+        # Dot-directories that are useful and should NOT be skipped
+        KEEP_DOT_DIRS = {".github", ".gitlab", ".circleci", ".docker"}
+        
         for root, dirs, files in os.walk(self.repo_path):
-            # Skip ignored directories
+            # Skip ignored directories, but keep CI/CD dot-dirs
             dirs[:] = [
                 d for d in dirs
-                if d not in SKIP_DIRS and not d.startswith(".")
+                if d not in SKIP_DIRS and (
+                    not d.startswith(".") or d in KEEP_DOT_DIRS
+                )
             ]
             
             rel_root = os.path.relpath(root, self.repo_path)
@@ -446,7 +456,11 @@ class ProjectScanner:
             fpath = self.repo_path / entry.path
             try:
                 content = fpath.read_text(encoding="utf-8", errors="ignore")
-                self._all_file_content_cache[entry.path] = content[:5000]
+                # Cap per-file cache at 5KB, total cache at 5MB
+                snippet = content[:5000]
+                if self._cache_total_bytes + len(snippet) <= self._cache_max_bytes:
+                    self._all_file_content_cache[entry.path] = snippet
+                    self._cache_total_bytes += len(snippet)
                 
                 # Extract imports
                 if ext == ".py":
