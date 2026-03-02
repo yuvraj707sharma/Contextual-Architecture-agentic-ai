@@ -57,6 +57,13 @@ from .llm_client import (
 )
 from .config import AgentConfig
 from .logger import get_logger, PipelineMetrics
+from .project_scanner import ProjectScanner, ProjectSnapshot
+from .reasoning_display import ReasoningDisplay
+from .plugins import (
+    LLMPlugin, WriterPlugin, ReviewerPlugin,
+    TrackerPlugin, ScannerPlugin, NotifierPlugin,
+    PluginRegistry,
+)
 
 __all__ = [
     # Agents
@@ -106,4 +113,16 @@ __all__ = [
     # Clarification & Feedback Loop
     "ClarificationHandler",
     "FeedbackReader",
+    # Scanner & Reasoning
+    "ProjectScanner",
+    "ProjectSnapshot",
+    "ReasoningDisplay",
+    # Plugins
+    "LLMPlugin",
+    "WriterPlugin",
+    "ReviewerPlugin",
+    "TrackerPlugin",
+    "ScannerPlugin",
+    "NotifierPlugin",
+    "PluginRegistry",
 ]

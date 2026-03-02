@@ -572,8 +572,8 @@ class Orchestrator:
         # Source 1: MODIFY targets from the plan
         plan_data = context.prior_context.get("plan", {})
         target_files_list = plan_data.get("target_files", [])
-        if not target_files_list and isinstance(plan_response.data, dict):
-            target_files_list = plan_response.data.get("target_files", [])
+        if not target_files_list and isinstance(planner_response.data, dict):
+            target_files_list = planner_response.data.get("target_files", [])
         
         for target in target_files_list:
             file_path = target.get("path", "")

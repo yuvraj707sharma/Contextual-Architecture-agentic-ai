@@ -323,6 +323,9 @@ class AgentConfig:
             "CA_BACKUP_DIR": "backup_dir",
         }
         
+        # Load env-based config to layer on top
+        env_config = cls.from_env()
+        
         # Only override fields where the env var is actually present
         for env_key, field_name in env_map.items():
             if os.environ.get(env_key) is not None:
