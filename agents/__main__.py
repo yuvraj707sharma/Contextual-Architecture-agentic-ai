@@ -13,6 +13,7 @@ import sys
 import os
 
 from .orchestrator import Orchestrator, OrchestrationResult
+from .safe_writer import SafeCodeWriter
 from .config import AgentConfig
 from .llm_client import create_llm_client
 from .logger import get_logger
@@ -158,6 +159,11 @@ Examples:
         "--dry-run",
         action="store_true",
         help="Show what would be generated without writing files",
+    )
+    parser.add_argument(
+        "--yes", "-y",
+        action="store_true",
+        help="Auto-approve all file changes (skip permission prompts)",
     )
 
     return parser
@@ -376,13 +382,108 @@ async def run(args) -> int:
         print("  Dry run -- no files written.")
         return 0 if result.success else 1
 
-    # If there's a changeset with permissions needed, handle it
-    if result.changeset and result.changeset.needs_permission:
-        print("  [!] Some changes require your approval.")
-        print("     Run with --dry-run to preview without writing.")
-        # In future: interactive approval loop here
+    # If there's a changeset, handle approval and writing
+    if result.changeset and result.changeset.changes:
+        if args.yes:
+            # Auto-approve all changes
+            result.changeset.approve_all()
+            safe_writer = SafeCodeWriter(repo_path)
+            report = safe_writer.apply_changes(result.changeset)
+            _print_write_report(report)
+        elif result.changeset.needs_permission:
+            # Interactive approval
+            _interactive_approval(result.changeset, repo_path)
+        else:
+            # All changes are safe (new files only) — auto-apply
+            result.changeset.approve_all()
+            safe_writer = SafeCodeWriter(repo_path)
+            report = safe_writer.apply_changes(result.changeset)
+            _print_write_report(report)
 
     return 0 if result.success else 1
+
+
+def _interactive_approval(changeset, repo_path: str):
+    """Show proposed changes and get user approval before writing."""
+    from .safe_writer import SafeCodeWriter
+    
+    print()
+    print(changeset.to_user_prompt())
+    
+    safe = changeset.safe_changes
+    needs_approval = changeset.permission_required
+    
+    if safe:
+        print(f"  \u2705 {len(safe)} new file(s) — auto-approved (safe)")
+    if needs_approval:
+        print(f"  \u26a0\ufe0f  {len(needs_approval)} file(s) need your approval")
+    print()
+    
+    # Show each change needing approval
+    for i, change in enumerate(needs_approval):
+        risk_icons = {"low": "\u26aa", "medium": "\U0001f7e1", "high": "\U0001f7e0", "critical": "\U0001f534"}
+        icon = risk_icons.get(change.risk_level.value, "\u26aa")
+        print(f"  {icon} [{i+1}] {change.file_path} ({change.risk_level.value} risk)")
+        print(f"      {change.description}")
+        # Show compact diff (first 8 lines)
+        for line in change.diff_lines[:8]:
+            if line.startswith('+'):
+                print(f"      \033[32m{line}\033[0m")
+            elif line.startswith('-'):
+                print(f"      \033[31m{line}\033[0m")
+            else:
+                print(f"      {line}")
+        if len(change.diff_lines) > 8:
+            print(f"      ... {len(change.diff_lines) - 8} more lines")
+        print()
+    
+    # Ask for approval
+    print("  Options: [a]pprove all | [1,2,3] approve specific | [n]one | [q]uit")
+    try:
+        choice = input("  > ").strip().lower()
+    except (KeyboardInterrupt, EOFError):
+        print("\n  Cancelled — no files written.")
+        return
+    
+    if choice in ('a', 'y', 'yes', 'all'):
+        changeset.approve_all()
+    elif choice in ('n', 'no', 'none', 'q', 'quit'):
+        print("  Skipped — no files written.")
+        return
+    else:
+        # Parse indices: "1,3" or "1 3"
+        try:
+            indices = [int(x.strip()) - 1 for x in choice.replace(',', ' ').split()]
+            # Auto-approve safe changes, plus the selected ones
+            for c in changeset.safe_changes:
+                c.approved = True
+            changeset.approve_by_index(indices)
+        except ValueError:
+            print("  Invalid input — no files written.")
+            return
+    
+    # Apply
+    safe_writer = SafeCodeWriter(repo_path)
+    report = safe_writer.apply_changes(changeset)
+    _print_write_report(report)
+
+
+def _print_write_report(report: dict):
+    """Show what was written to disk."""
+    print()
+    if report.get("applied"):
+        print(f"  \u2705 Written {report['total_applied']} file(s):")
+        for f in report["applied"]:
+            print(f"     \U0001f4c4 {f}")
+    if report.get("backed_up"):
+        print(f"  \U0001f4be {len(report['backed_up'])} backup(s) created")
+    if report.get("skipped") and report["total_skipped"] > 0:
+        print(f"  \u23ed\ufe0f  Skipped {report['total_skipped']} file(s)")
+    if report.get("errors"):
+        print(f"  \u274c Errors:")
+        for e in report["errors"]:
+            print(f"     {e}")
+    print()
 
 
 def main():

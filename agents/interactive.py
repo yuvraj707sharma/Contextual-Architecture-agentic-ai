@@ -537,6 +537,125 @@ def check_pseudocode_alignment(pseudocode: str, generated_code: str) -> None:
     print()
 
 
+# ── File Write Flow ─────────────────────────────────────────
+
+def _handle_write_flow(changeset, repo_path: str):
+    """Show proposed changes, get user approval, write to disk.
+    
+    This is the critical 'last mile' that makes MACRO actually
+    modify files instead of just printing code.
+    """
+    from .safe_writer import SafeCodeWriter
+    
+    safe = changeset.safe_changes
+    needs_approval = changeset.permission_required
+    
+    # Header
+    print(Colors.colored("  ─── Proposed Changes ───", Colors.CYAN + Colors.BOLD))
+    print()
+    
+    # Show safe changes (auto-approved)
+    if safe:
+        for change in safe:
+            print(Colors.colored(f"    + {change.file_path}", Colors.GREEN) + 
+                  Colors.colored(" (new file — auto-approved)", Colors.DIM))
+    
+    # Show risky changes
+    if needs_approval:
+        print()
+        for i, change in enumerate(needs_approval):
+            risk_colors = {
+                "low": Colors.WHITE,
+                "medium": Colors.YELLOW,
+                "high": Colors.MAGENTA,
+                "critical": Colors.RED,
+            }
+            color = risk_colors.get(change.risk_level.value, Colors.WHITE)
+            print(Colors.colored(
+                f"    [{i+1}] {change.file_path} ({change.risk_level.value} risk)",
+                color + Colors.BOLD,
+            ))
+            print(Colors.colored(f"        {change.description}", Colors.DIM))
+            # Compact diff
+            for line in change.diff_lines[:6]:
+                if line.startswith('+'):
+                    print(Colors.colored(f"        {line}", Colors.GREEN))
+                elif line.startswith('-'):
+                    print(Colors.colored(f"        {line}", Colors.RED))
+            if len(change.diff_lines) > 6:
+                print(Colors.colored(
+                    f"        ... {len(change.diff_lines) - 6} more lines",
+                    Colors.DIM,
+                ))
+            print()
+    
+    if not needs_approval:
+        # All changes are safe — auto-apply
+        changeset.approve_all()
+        writer = SafeCodeWriter(repo_path)
+        report = writer.apply_changes(changeset)
+        _print_write_report(report)
+        return
+    
+    # Ask for approval
+    print(Colors.colored(
+        "  Options: [a]pprove all | [1,2,3] approve specific | [n]one",
+        Colors.BOLD,
+    ))
+    try:
+        choice = input(Colors.colored("  > ", Colors.GREEN + Colors.BOLD)).strip().lower()
+    except (KeyboardInterrupt, EOFError):
+        print(Colors.colored("\n  Cancelled — no files written.", Colors.YELLOW))
+        return
+    
+    if choice in ('a', 'y', 'yes', 'all'):
+        changeset.approve_all()
+    elif choice in ('n', 'no', 'none', 'q', 'quit'):
+        print(Colors.colored("  Skipped — no files written.", Colors.DIM))
+        return
+    else:
+        # Parse indices: "1,3" or "1 3"
+        try:
+            indices = [int(x.strip()) - 1 for x in choice.replace(',', ' ').split()]
+            for c in changeset.safe_changes:
+                c.approved = True
+            changeset.approve_by_index(indices)
+        except ValueError:
+            print(Colors.colored("  Invalid input — no files written.", Colors.YELLOW))
+            return
+    
+    # Apply
+    writer = SafeCodeWriter(repo_path)
+    report = writer.apply_changes(changeset)
+    _print_write_report(report)
+
+
+def _print_write_report(report: dict):
+    """Show what was written to disk."""
+    print()
+    if report.get("applied"):
+        print(Colors.colored(
+            f"  Written {report['total_applied']} file(s):",
+            Colors.GREEN + Colors.BOLD,
+        ))
+        for f in report["applied"]:
+            print(Colors.colored(f"    {f}", Colors.GREEN))
+    if report.get("backed_up"):
+        print(Colors.colored(
+            f"  {len(report['backed_up'])} backup(s) created",
+            Colors.DIM,
+        ))
+    if report.get("skipped") and report["total_skipped"] > 0:
+        print(Colors.colored(
+            f"  Skipped {report['total_skipped']} file(s)",
+            Colors.DIM,
+        ))
+    if report.get("errors"):
+        print(Colors.colored("  Errors:", Colors.RED))
+        for e in report["errors"]:
+            print(Colors.colored(f"    {e}", Colors.RED))
+
+
 async def run_single_request(
     request: str,
     repo_path: str,
@@ -767,6 +886,10 @@ async def interactive_session(args) -> int:
                 # Pseudocode alignment check (if pseudocode was provided)
                 if user_pseudocode and result and result.generated_code:
                     check_pseudocode_alignment(user_pseudocode, result.generated_code)
+                
+                # ── File Write Flow ──────────────────────────
+                if result and result.changeset and result.changeset.changes:
+                    _handle_write_flow(result.changeset, repo_path)
             print()
         
         except KeyboardInterrupt:
