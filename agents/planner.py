@@ -667,6 +667,11 @@ class PlannerAgent(BaseAgent):
         if project_context:
             prompt_parts.append(f"\n{project_context}")
 
+        # Add detected conflicts (from proactive ClarificationHandler)
+        detected_conflicts = context.prior_context.get("detected_conflicts", "")
+        if detected_conflicts:
+            prompt_parts.append(f"\n{detected_conflicts}")
+
         # ── GUARDRAIL: Detect explicit file references in request ──
         user_referenced_files = self._extract_file_references(
             context.user_request, context.repo_path, context.language

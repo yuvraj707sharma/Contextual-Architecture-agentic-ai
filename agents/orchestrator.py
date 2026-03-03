@@ -457,6 +457,56 @@ class Orchestrator:
         # Update architect data with cleaned output (signal keys removed)
         context.prior_context["architect"] = processed
         
+        # ── PROACTIVE CONFLICT DETECTION ──────────────────────────
+        # Compare user request against scanner findings to surface
+        # conflicts BEFORE the Planner runs.
+        # e.g., "Your project uses Firebase but you asked for Supabase"
+        
+        project_snap_dict = context.prior_context.get("project_snapshot", {})
+        if isinstance(project_snap_dict, dict):
+            conflicts = clarification_handler.detect_conflicts(
+                user_request=user_request,
+                project_snapshot=project_snap_dict,
+                language=context.language,
+            )
+        else:
+            # If snapshot is a ProjectSnapshot object, convert it
+            try:
+                conflicts = clarification_handler.detect_conflicts(
+                    user_request=user_request,
+                    project_snapshot=project_snap_dict.to_dict() if hasattr(project_snap_dict, 'to_dict') else {},
+                    language=context.language,
+                )
+            except Exception:
+                conflicts = []
+        
+        if conflicts:
+            self.reasoning.emit(
+                "clarification",
+                f"Detected {len(conflicts)} conflict(s): "
+                + ", ".join(f"{c.category}({c.detected}→{c.requested})" for c in conflicts),
+            )
+            
+            # Log all assumptions (these will be visible in traces)
+            for c in conflicts:
+                self.logger.warning(
+                    f"Conflict [{c.category}]: project has {c.detected}, "
+                    f"user wants {c.requested}. Default: {c.default_action}",
+                    extra={"agent": "clarification", "step": "proactive"},
+                )
+            
+            # Inject conflict context into planner's prior context
+            conflict_context = clarification_handler.questions_to_context(conflicts)
+            context.prior_context["detected_conflicts"] = conflict_context
+            
+            # Store for interactive mode to display later
+            result.agent_summaries["conflicts"] = [
+                {"category": c.category, "question": c.question,
+                 "detected": c.detected, "requested": c.requested,
+                 "default": c.default_action}
+                for c in conflicts
+            ]
+        
         # ── PLANNER PHASE ────────────────────────────────────────
         # Creates a structured plan BEFORE any code generation.
         # The plan is written to workspace/plan.md and re-read
