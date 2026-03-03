@@ -140,6 +140,14 @@ class ProjectSnapshot:
     # Config files found
     config_files: List[str] = field(default_factory=list)
     
+    # Production environment
+    deployment_platform: str = ""      # vercel, railway, heroku, aws, etc.
+    docker_base_image: str = ""         # node:20-alpine, python:3.12-slim
+    docker_cmd: str = ""                # The actual CMD/ENTRYPOINT
+    exposed_ports: List[int] = field(default_factory=list)
+    runtime_version: str = ""           # "node 20", "python >=3.10"
+    infra_tools: List[str] = field(default_factory=list)  # terraform, pulumi, etc.
+    
     def to_dict(self) -> Dict[str, Any]:
         return {
             "total_files": self.total_files,
@@ -161,6 +169,13 @@ class ProjectSnapshot:
             "config_files": self.config_files,
             "dir_tree": self.dir_tree[:30],  # Cap for prompt size
             "files_sample": [f.to_dict() for f in self.file_tree[:50]],
+            # Production environment
+            "deployment_platform": self.deployment_platform,
+            "docker_base_image": self.docker_base_image,
+            "docker_cmd": self.docker_cmd,
+            "exposed_ports": self.exposed_ports,
+            "runtime_version": self.runtime_version,
+            "infra_tools": self.infra_tools,
         }
     
     def to_prompt_context(self, detailed: bool = False) -> str:
@@ -205,6 +220,23 @@ class ProjectSnapshot:
         
         if self.entry_points:
             lines.append(f"Entry Points: {', '.join(self.entry_points[:5])}")
+        
+        # Production environment
+        if self.deployment_platform:
+            lines.append(f"Deployment: {self.deployment_platform}")
+        
+        if self.docker_base_image:
+            lines.append(f"Docker Image: {self.docker_base_image}")
+            if self.exposed_ports:
+                lines.append(f"Exposed Ports: {', '.join(str(p) for p in self.exposed_ports)}")
+            if self.docker_cmd:
+                lines.append(f"Docker CMD: {self.docker_cmd}")
+        
+        if self.runtime_version:
+            lines.append(f"Runtime: {self.runtime_version}")
+        
+        if self.infra_tools:
+            lines.append(f"Infrastructure: {', '.join(self.infra_tools)}")
         
         if detailed:
             # ── DETAILED MODE: Full project map for Planner/Implementer ──
@@ -288,7 +320,7 @@ class ProjectScanner:
                 f"Tip: point --repo at a project directory, not your home folder.",
                 extra={"agent": "scanner", "step": "truncated"},
             )
-            # Still do dep detection (reads only manifest files, fast)
+            # Still do dep/config detection (reads only manifest files, fast)
             self._scan_dependencies(snapshot)
             self._scan_environment(snapshot)
             self._detect_build_system(snapshot)
@@ -317,6 +349,12 @@ class ProjectScanner:
             
             # Step 9: Find entry points
             self._find_entry_points(snapshot)
+        
+        # Production environment detection (always runs — only reads a few files)
+        self._detect_deployment(snapshot)
+        self._parse_dockerfile(snapshot)
+        self._detect_runtime_version(snapshot)
+        self._detect_infra_tools(snapshot)
         
         self.logger.info(
             f"Project scan: {snapshot.total_files} files, "
@@ -715,3 +753,164 @@ class ProjectScanner:
                     snapshot.entry_points.append(f"npm run dev -> {scripts['dev']}")
             except (json.JSONDecodeError, OSError):
                 pass
+
+    # ── Production Environment Detection ─────────────────
+
+    # Deployment platform signatures: config files + env var prefixes
+    DEPLOYMENT_SIGNATURES = {
+        "vercel": {"files": ["vercel.json", ".vercel"], "env_prefix": "VERCEL_"},
+        "netlify": {"files": ["netlify.toml", "_redirects"], "env_prefix": "NETLIFY_"},
+        "railway": {"files": ["railway.toml", "railway.json"], "env_prefix": "RAILWAY_"},
+        "fly.io": {"files": ["fly.toml"], "env_prefix": "FLY_"},
+        "render": {"files": ["render.yaml"], "env_prefix": "RENDER_"},
+        "heroku": {"files": ["Procfile", "app.json"], "env_prefix": "HEROKU_"},
+        "aws": {"files": ["serverless.yml", "serverless.yaml", "template.yaml",
+                          "cdk.json", "samconfig.toml"], "env_prefix": "AWS_"},
+        "gcp": {"files": ["app.yaml", "cloudbuild.yaml"], "env_prefix": "GOOGLE_CLOUD_"},
+        "azure": {"files": ["azure-pipelines.yml", "host.json"], "env_prefix": "AZURE_"},
+        "digitalocean": {"files": [".do/app.yaml"], "env_prefix": "DO_APP_"},
+    }
+
+    def _detect_deployment(self, snapshot: ProjectSnapshot):
+        """Detect deployment platform from config files and env variable keys."""
+        for platform, sigs in self.DEPLOYMENT_SIGNATURES.items():
+            # Check config files
+            for f in sigs["files"]:
+                target = self.repo_path / f
+                if target.exists() or target.is_dir():
+                    snapshot.deployment_platform = platform
+                    if f not in snapshot.config_files:
+                        snapshot.config_files.append(f)
+                    self.logger.debug(
+                        f"Deployment: {platform} (found {f})",
+                        extra={"agent": "scanner"},
+                    )
+                    return
+
+            # Check env variable prefixes (already scanned)
+            prefix = sigs["env_prefix"]
+            if any(k.startswith(prefix) for k in snapshot.env_keys):
+                snapshot.deployment_platform = platform
+                return
+
+    def _parse_dockerfile(self, snapshot: ProjectSnapshot):
+        """Extract runtime info from Dockerfile — base image, exposed ports, CMD."""
+        # Try multiple Dockerfile variants
+        for name in ["Dockerfile", "dockerfile", "Dockerfile.prod", "Dockerfile.production"]:
+            dockerfile = self.repo_path / name
+            if dockerfile.exists():
+                break
+        else:
+            return  # No Dockerfile found
+
+        try:
+            content = dockerfile.read_text(encoding="utf-8", errors="ignore")
+
+            # Base image: FROM node:20-alpine, FROM python:3.12-slim
+            from_matches = re.findall(r'^FROM\s+(\S+)', content, re.MULTILINE)
+            if from_matches:
+                # Use last FROM (multi-stage builds: the final stage is what runs)
+                snapshot.docker_base_image = from_matches[-1]
+
+            # Exposed ports: EXPOSE 3000, EXPOSE 8080
+            ports = re.findall(r'^EXPOSE\s+(\d+)', content, re.MULTILINE)
+            snapshot.exposed_ports = [int(p) for p in ports]
+
+            # CMD / ENTRYPOINT — the actual production command
+            cmd_match = re.search(
+                r'^(?:CMD|ENTRYPOINT)\s+(.+)',
+                content,
+                re.MULTILINE,
+            )
+            if cmd_match:
+                snapshot.docker_cmd = cmd_match.group(1).strip()
+
+            self.logger.debug(
+                f"Docker: {snapshot.docker_base_image}, "
+                f"ports={snapshot.exposed_ports}, cmd={snapshot.docker_cmd[:50]}",
+                extra={"agent": "scanner"},
+            )
+        except OSError:
+            pass
+
+    def _detect_runtime_version(self, snapshot: ProjectSnapshot):
+        """Detect target runtime version from version files."""
+        # Node.js version files
+        for fname in [".node-version", ".nvmrc"]:
+            path = self.repo_path / fname
+            if path.exists():
+                try:
+                    version = path.read_text(encoding="utf-8").strip()
+                    snapshot.runtime_version = f"node {version}"
+                    return
+                except OSError:
+                    pass
+
+        # Python version files
+        path = self.repo_path / ".python-version"
+        if path.exists():
+            try:
+                version = path.read_text(encoding="utf-8").strip()
+                snapshot.runtime_version = f"python {version}"
+                return
+            except OSError:
+                pass
+
+        # From pyproject.toml: requires-python = ">=3.10"
+        pyproject = self.repo_path / "pyproject.toml"
+        if pyproject.exists():
+            try:
+                content = pyproject.read_text(encoding="utf-8", errors="ignore")
+                match = re.search(r'requires-python\s*=\s*"([^"]+)"', content)
+                if match:
+                    snapshot.runtime_version = f"python {match.group(1)}"
+                    return
+            except OSError:
+                pass
+
+        # From package.json engines
+        pkg = self.repo_path / "package.json"
+        if pkg.exists():
+            try:
+                data = json.loads(pkg.read_text(encoding="utf-8", errors="ignore"))
+                engines = data.get("engines", {})
+                if "node" in engines:
+                    snapshot.runtime_version = f"node {engines['node']}"
+                    return
+            except (json.JSONDecodeError, OSError):
+                pass
+
+        # From Docker base image (fallback)
+        if snapshot.docker_base_image:
+            img = snapshot.docker_base_image.lower()
+            if "node:" in img:
+                version = img.split("node:")[-1].split("-")[0]
+                snapshot.runtime_version = f"node {version}"
+            elif "python:" in img:
+                version = img.split("python:")[-1].split("-")[0]
+                snapshot.runtime_version = f"python {version}"
+
+    # Infra-as-code tool signatures
+    INFRA_SIGNATURES = {
+        "terraform": ["main.tf", "terraform.tfvars", ".terraform.lock.hcl"],
+        "pulumi": ["Pulumi.yaml", "Pulumi.yml"],
+        "aws-cdk": ["cdk.json"],
+        "aws-sam": ["samconfig.toml", "template.yaml"],
+        "ansible": ["playbook.yml", "ansible.cfg"],
+        "docker-compose": ["docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"],
+        "kubernetes": ["k8s/", "kubernetes/", "kustomization.yaml"],
+        "helm": ["Chart.yaml"],
+    }
+
+    def _detect_infra_tools(self, snapshot: ProjectSnapshot):
+        """Detect infrastructure-as-code tools from config files."""
+        for tool, files in self.INFRA_SIGNATURES.items():
+            for fname in files:
+                target = self.repo_path / fname
+                if target.exists() or target.is_dir():
+                    if tool not in snapshot.infra_tools:
+                        snapshot.infra_tools.append(tool)
+                    if fname not in snapshot.config_files:
+                        snapshot.config_files.append(fname)
+                    break
+
