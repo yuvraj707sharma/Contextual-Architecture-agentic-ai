@@ -416,7 +416,11 @@ def main():
     # Handle --interactive mode
     if args.interactive:
         from .interactive import interactive_session
-        exit_code = asyncio.run(interactive_session(args))
+        try:
+            exit_code = asyncio.run(interactive_session(args))
+        except (KeyboardInterrupt, asyncio.CancelledError):
+            print("\n  Session ended.")
+            exit_code = 0
         sys.exit(exit_code)
 
     # Single-shot mode requires a request
@@ -424,7 +428,11 @@ def main():
         parser.print_help()
         sys.exit(1)
 
-    exit_code = asyncio.run(run(args))
+    try:
+        exit_code = asyncio.run(run(args))
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        print("\n  Interrupted.")
+        exit_code = 130
     sys.exit(exit_code)
 
 

@@ -262,9 +262,10 @@ class ProjectScanner:
     Fast — uses only filesystem reads, no LLM calls.
     """
     
-    def __init__(self, repo_path: str, language: str = ""):
+    def __init__(self, repo_path: str, language: str = "", max_files: int = 5000):
         self.repo_path = Path(repo_path)
         self.language = language
+        self.max_files = max_files  # Safety cap — stops scanning after this many files
         self.logger = get_logger("scanner")
         self._all_imports: set = set()
         self._all_file_content_cache: Dict[str, str] = {}
@@ -278,29 +279,43 @@ class ProjectScanner:
         # Step 1: Walk file tree
         self._scan_file_tree(snapshot)
         
-        # Step 2: Read dependency manifests
-        self._scan_dependencies(snapshot)
-        
-        # Step 3: Scan imports across files (for framework/auth/db detection)
-        self._scan_imports(snapshot)
-        
-        # Step 4: Detect frameworks
-        self._detect_frameworks(snapshot)
-        
-        # Step 5: Detect auth systems
-        self._detect_auth(snapshot)
-        
-        # Step 6: Detect databases
-        self._detect_databases(snapshot)
-        
-        # Step 7: Scan environment
-        self._scan_environment(snapshot)
-        
-        # Step 8: Detect build system
-        self._detect_build_system(snapshot)
-        
-        # Step 9: Find entry points
-        self._find_entry_points(snapshot)
+        # If the scan was truncated (too many files), skip expensive steps
+        if snapshot.total_files >= self.max_files:
+            self.logger.warning(
+                f"File tree truncated at {self.max_files} files — "
+                f"skipping import scanning to prevent hangs. "
+                f"Tip: point --repo at a project directory, not your home folder.",
+                extra={"agent": "scanner", "step": "truncated"},
+            )
+            # Still do dep detection (reads only manifest files, fast)
+            self._scan_dependencies(snapshot)
+            self._scan_environment(snapshot)
+            self._detect_build_system(snapshot)
+            self._find_entry_points(snapshot)
+        else:
+            # Step 2: Read dependency manifests
+            self._scan_dependencies(snapshot)
+            
+            # Step 3: Scan imports across files (for framework/auth/db detection)
+            self._scan_imports(snapshot)
+            
+            # Step 4: Detect frameworks
+            self._detect_frameworks(snapshot)
+            
+            # Step 5: Detect auth systems
+            self._detect_auth(snapshot)
+            
+            # Step 6: Detect databases
+            self._detect_databases(snapshot)
+            
+            # Step 7: Scan environment
+            self._scan_environment(snapshot)
+            
+            # Step 8: Detect build system
+            self._detect_build_system(snapshot)
+            
+            # Step 9: Find entry points
+            self._find_entry_points(snapshot)
         
         self.logger.info(
             f"Project scan: {snapshot.total_files} files, "
@@ -317,6 +332,7 @@ class ProjectScanner:
     def _scan_file_tree(self, snapshot: ProjectSnapshot):
         """Walk the directory tree, respecting .gitignore-style skips."""
         dirs_seen = set()
+        file_count = 0
         
         # Dot-directories that are useful and should NOT be skipped
         KEEP_DOT_DIRS = {".github", ".gitlab", ".circleci", ".docker"}
@@ -338,6 +354,13 @@ class ProjectScanner:
                 if fname in SKIP_FILES:
                     continue
                 
+                # Safety cap — prevent hangs on huge directories
+                if file_count >= self.max_files:
+                    snapshot.total_files = file_count
+                    snapshot.dir_tree = sorted(dirs_seen)
+                    snapshot.total_dirs = len(dirs_seen) + 1
+                    return  # Stop walking
+                
                 fpath = Path(root) / fname
                 try:
                     size = fpath.stat().st_size
@@ -350,6 +373,7 @@ class ProjectScanner:
                 snapshot.file_tree.append(FileEntry(
                     path=rel_path, size_bytes=size, language=lang,
                 ))
+                file_count += 1
         
         snapshot.total_files = len(snapshot.file_tree)
         snapshot.dir_tree = sorted(dirs_seen)

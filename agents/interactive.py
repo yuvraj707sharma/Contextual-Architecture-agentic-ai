@@ -580,6 +580,31 @@ async def interactive_session(args) -> int:
         print(Colors.colored(f"  [X] Repository path does not exist: {repo_path}", Colors.RED))
         return 1
     
+    # Warn about dangerous repo paths (home dir, system root, Desktop)
+    home_dir = os.path.expanduser("~")
+    dangerous_paths = {
+        os.path.normpath(home_dir),
+        os.path.normpath(os.path.join(home_dir, "Desktop")),
+        os.path.normpath(os.path.join(home_dir, "Documents")),
+        os.path.normpath("/"),
+        os.path.normpath("C:\\"),
+        os.path.normpath("C:\\Users"),
+    }
+    if os.path.normpath(repo_path) in dangerous_paths:
+        print(Colors.colored(
+            f"\n  [!] WARNING: '{repo_path}' is not a project directory.\n"
+            f"      Scanning your home/system folder will be very slow.\n"
+            f"      Use --repo <project-path> instead.\n"
+            f"      Example: python -m agents -i --repo ./my-project\n",
+            Colors.YELLOW,
+        ))
+        try:
+            confirm = input(Colors.colored("  Continue anyway? [y/N]: ", Colors.YELLOW)).strip().lower()
+            if confirm not in ("y", "yes"):
+                return 0
+        except (KeyboardInterrupt, EOFError):
+            return 0
+    
     # Determine provider — Priority: CLI args > env vars > config file
     saved_config = AgentConfig.load_user_config()
     
