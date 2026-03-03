@@ -16,6 +16,7 @@ full awareness of the project environment:
 
 import os
 import re
+import time
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -333,11 +334,21 @@ class ProjectScanner:
         """Walk the directory tree, respecting .gitignore-style skips."""
         dirs_seen = set()
         file_count = 0
+        scan_start = time.monotonic()
+        MAX_SCAN_SECONDS = 5.0  # Hard timeout — prevents hangs on huge dirs
         
         # Dot-directories that are useful and should NOT be skipped
         KEEP_DOT_DIRS = {".github", ".gitlab", ".circleci", ".docker"}
         
         for root, dirs, files in os.walk(self.repo_path):
+            # Time-based circuit breaker
+            if time.monotonic() - scan_start > MAX_SCAN_SECONDS:
+                self.logger.warning(
+                    f"Scan timed out after {MAX_SCAN_SECONDS}s — directory too large",
+                    extra={"agent": "scanner", "step": "timeout"},
+                )
+                break
+            
             # Skip ignored directories, but keep CI/CD dot-dirs
             dirs[:] = [
                 d for d in dirs

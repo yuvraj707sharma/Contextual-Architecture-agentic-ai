@@ -12,6 +12,7 @@ Two modes:
 Wired into the Orchestrator after Discovery and before Planner.
 """
 
+import re
 import logging
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
@@ -95,11 +96,17 @@ class ClarificationHandler:
         questions: List[ConflictQuestion] = []
         request_lower = user_request.lower()
 
+        def _kw_match(keyword: str) -> bool:
+            """Word-boundary match to avoid false positives.
+            e.g., 'next' won't match 'the next feature'
+            """
+            return bool(re.search(rf'\b{re.escape(keyword)}\b', request_lower))
+
         # ── Auth system conflicts ────────────────────────────
         existing_auth = set(project_snapshot.get("auth_systems", []))
         if existing_auth:
             for keyword, auth_name in AUTH_KEYWORDS.items():
-                if keyword in request_lower and auth_name not in existing_auth:
+                if _kw_match(keyword) and auth_name not in existing_auth:
                     existing_str = ", ".join(existing_auth)
                     questions.append(ConflictQuestion(
                         category="auth",
@@ -118,7 +125,7 @@ class ClarificationHandler:
         existing_fw = set(project_snapshot.get("frameworks", []))
         if existing_fw:
             for keyword, fw_name in FRAMEWORK_KEYWORDS.items():
-                if keyword in request_lower and fw_name not in existing_fw:
+                if _kw_match(keyword) and fw_name not in existing_fw:
                     for group in [_FRONTEND_FRAMEWORKS, _BACKEND_PY_FRAMEWORKS, _BACKEND_JS_FRAMEWORKS]:
                         if fw_name in group and (existing_fw & group):
                             conflicting = existing_fw & group
@@ -138,7 +145,7 @@ class ClarificationHandler:
         existing_db = set(project_snapshot.get("databases", []))
         if existing_db:
             for keyword, db_name in DB_KEYWORDS.items():
-                if keyword in request_lower and db_name not in existing_db:
+                if _kw_match(keyword) and db_name not in existing_db:
                     existing_str = ", ".join(existing_db)
                     questions.append(ConflictQuestion(
                         category="database",

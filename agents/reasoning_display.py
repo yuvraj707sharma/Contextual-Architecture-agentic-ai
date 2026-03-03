@@ -21,8 +21,6 @@ from typing import List, Dict, Optional
 _HAS_RICH = False
 try:
     from rich.console import Console
-    from rich.panel import Panel
-    from rich.text import Text
     _HAS_RICH = True
 except ImportError:
     pass
