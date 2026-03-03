@@ -141,6 +141,12 @@ Run one request and exit:
 ```cmd
 macro "Add login system" --repo "C:\my\project" --lang python
 macro "Add binary search algorithm" --repo "C:\DSA" --lang cpp
+
+:: Auto-approve all changes (skip permission prompts)
+macro "Add login system" --repo "C:\my\project" --lang python --yes
+
+:: Preview without writing files
+macro "Add login system" --repo "C:\my\project" --lang python --dry-run
 ```
 
 ---
@@ -257,6 +263,27 @@ Every build run produces a result like this:
      BLOCKED: dangerous_change.py (rejected)
 ```
 
+After code generation, MACRO will show proposed changes and ask for approval:
+
+```
+  ─── Proposed Changes ───
+
+    + new_file.py (new file — auto-approved)
+
+    [1] existing.py (medium risk)
+        Modify: Add authentication import
+        + from auth.middleware import jwt_auth
+        + app.add_middleware(jwt_auth)
+
+  Options: [a]pprove all | [1,2,3] approve specific | [n]one
+  >
+
+  Written 2 file(s):
+    new_file.py
+    existing.py
+  1 backup(s) created
+```
+
 ### Change Types
 
 | Symbol | Meaning |
@@ -299,6 +326,12 @@ macro --save-config --provider groq --planner-provider google
 
 :: Help
 macro --help
+
+:: Auto-approve all changes
+macro "Add feature" --repo "C:\project" --lang python --yes
+
+:: Preview without writing
+macro "Add feature" --repo "C:\project" --lang python --dry-run
 ```
 
 ### Supported Languages
@@ -360,4 +393,4 @@ Severity:   Bad UX (not a crash, but wrong behavior)
 
 ---
 
-*MACRO v0.1.0 -- Multi-Agent Contextual Repository Orchestrator*
+*MACRO v0.2.0 — Multi-Agent Contextual Repository Orchestrator*
