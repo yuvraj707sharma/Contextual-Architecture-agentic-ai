@@ -39,6 +39,10 @@ from .feedback_reader import FeedbackReader
 from .trace_logger import TraceLogger
 from .project_scanner import ProjectScanner
 from .reasoning_display import ReasoningDisplay
+from .graph_builder import GraphBuilder
+from .impact_analyzer import ImpactAnalyzer
+from .shell_executor import ShellExecutor
+from .pipeline_report import PipelineReport
 
 
 @dataclass
@@ -338,6 +342,47 @@ class Orchestrator:
             self.logger.debug(f"Project scanner skipped: {e}")
             self.reasoning.emit("scanner", f"Scan skipped (non-critical): {e}")
         
+        # ── CODE GRAPH PHASE ──────────────────────────────────────
+        # Builds a deterministic AST-based call/import graph.
+        # Pure filesystem + AST — no LLM calls. Typically <500ms.
+        # This is MACRO's technical moat: no competitor does this.
+        
+        graph = None
+        impact_analyzer = None
+        try:
+            self.reasoning.emit("graph", "Building code relationship graph...")
+            graph_builder = GraphBuilder(repo_path)
+            graph = graph_builder.build()
+            impact_analyzer = ImpactAnalyzer(graph)
+            
+            summary = graph.summary()
+            self.reasoning.emit(
+                "graph",
+                f"Graph built: {summary['total_nodes']} nodes, "
+                f"{summary['total_edges']} edges "
+                f"({summary['functions']} functions, {summary['classes']} classes)",
+            )
+            self.logger.info(
+                f"Code graph: {summary['total_nodes']} nodes, "
+                f"{summary['total_edges']} edges from {summary['files']} files",
+                extra={"agent": "graph_builder"},
+            )
+            
+            # Store graph summary in context (lightweight)
+            context.prior_context["code_graph_summary"] = summary
+            
+            try:
+                tracer.log_agent(
+                    "graph_builder", user_request[:200],
+                    f"{summary['total_nodes']} nodes, {summary['total_edges']} edges",
+                    summary,
+                )
+            except Exception:
+                pass
+        except Exception as e:
+            self.logger.debug(f"Code graph skipped (non-critical): {e}")
+            self.reasoning.emit("graph", f"Graph skipped (non-critical): {e}")
+        
         # ── PR SEARCH + PARALLEL DISCOVERY PHASE ─────────────────
         # PR Search, StyleAnalyzer, Historian, and Architect are all
         # independent — they scan different data sources.
@@ -506,6 +551,44 @@ class Orchestrator:
                  "default": c.default_action}
                 for c in conflicts
             ]
+        
+        # ── GRAPH IMPACT ANALYSIS ─────────────────────────────────
+        # Use the code graph to find which files/functions are affected
+        # by this request. This gives the Planner DETERMINISTIC facts
+        # about code relationships — not LLM guesses.
+        
+        if impact_analyzer:
+            try:
+                impact_reports = impact_analyzer.analyze_request(user_request)
+                if impact_reports:
+                    graph_context = impact_analyzer.format_for_planner(impact_reports)
+                    context.prior_context["graph_intelligence"] = graph_context
+                    
+                    # Also store structured data for downstream agents
+                    context.prior_context["impact_reports"] = [
+                        r.to_dict() for r in impact_reports
+                    ]
+                    
+                    affected_files = set()
+                    for r in impact_reports:
+                        affected_files.update(r.affected_files)
+                    
+                    self.reasoning.emit(
+                        "graph",
+                        f"Impact analysis: {len(impact_reports)} target(s) analyzed, "
+                        f"{len(affected_files)} file(s) may need changes",
+                    )
+                    self.logger.info(
+                        f"Graph impact: {len(affected_files)} affected files",
+                        extra={"agent": "impact_analyzer"},
+                    )
+                else:
+                    self.reasoning.emit(
+                        "graph",
+                        "No graph targets found for this request (new code path)",
+                    )
+            except Exception as e:
+                self.logger.debug(f"Impact analysis skipped: {e}")
         
         # ── PLANNER PHASE ────────────────────────────────────────
         # Creates a structured plan BEFORE any code generation.
@@ -800,6 +883,52 @@ class Orchestrator:
                 f"{len(changeset.untouched_files)} files preserved",
                 extra={"agent": "safe_writer"},
             )
+        
+        # ── POST-WRITE COMMAND SUGGESTIONS ────────────────────────
+        # Auto-detect what commands should be run after writing files:
+        # - New dependency file → pip install / npm install
+        # - Test file written → pytest / npm test
+        # - Any code → linting
+        if result.generated_code:
+            try:
+                shell_executor = ShellExecutor(repo_path)
+                suggestions = shell_executor.suggest_post_write(
+                    generated_files, language
+                )
+                if suggestions:
+                    result.context["post_write_commands"] = [
+                        {"command": s.command, "reason": s.reason,
+                         "risk": s.risk.value, "auto": s.auto_approve}
+                        for s in suggestions
+                    ]
+                    self.reasoning.emit(
+                        "executor",
+                        f"{len(suggestions)} post-write command(s) suggested: "
+                        + ", ".join(s.command for s in suggestions[:3]),
+                    )
+            except Exception as e:
+                self.logger.debug(f"Post-write suggestions skipped: {e}")
+        
+        # ── PIPELINE REPORT (GitHub-style Dashboard) ─────────────
+        # Generate a formatted report showing the user everything:
+        # what was done, why, test/CI results, repo stats, git commands.
+        try:
+            # Populate result context for the report
+            result.context["user_request"] = user_request
+            result.context["code_graph_summary"] = context.prior_context.get("code_graph_summary", {})
+            result.context["impact_reports"] = context.prior_context.get("impact_reports", [])
+            result.context["project_snapshot"] = context.prior_context.get("project_snapshot", {})
+            result.context["plan"] = context.prior_context.get("plan", {})
+            
+            report = PipelineReport.from_result(result, repo_path)
+            result.context["pipeline_report"] = report.render()
+            result.context["pipeline_report_dict"] = report.to_dict()
+            result.context["commit_message"] = report.commit_message
+            result.context["git_commands"] = report.git_commands
+            
+            self.reasoning.emit("report", "Pipeline dashboard generated")
+        except Exception as e:
+            self.logger.debug(f"Pipeline report skipped: {e}")
         
         # Finalize metrics
         metrics.total_duration_ms = (time.perf_counter() - pipeline_start) * 1000

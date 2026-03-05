@@ -672,6 +672,11 @@ class PlannerAgent(BaseAgent):
         if detected_conflicts:
             prompt_parts.append(f"\n{detected_conflicts}")
 
+        # Add graph intelligence (deterministic code relationships from AST)
+        graph_intelligence = context.prior_context.get("graph_intelligence", "")
+        if graph_intelligence:
+            prompt_parts.append(f"\n{graph_intelligence}")
+
         # ── GUARDRAIL: Detect explicit file references in request ──
         user_referenced_files = self._extract_file_references(
             context.user_request, context.repo_path, context.language

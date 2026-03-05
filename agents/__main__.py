@@ -17,6 +17,8 @@ from .safe_writer import SafeCodeWriter
 from .config import AgentConfig
 from .llm_client import create_llm_client
 from .logger import get_logger
+from .pipeline_report import PipelineReport, generate_report
+from .shell_executor import ShellExecutor, CommandRisk
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -177,61 +179,74 @@ def auto_detect_provider() -> str:
 
 
 def print_result(result: OrchestrationResult, orchestrator: Orchestrator, as_json: bool = False):
-    """Pretty-print the orchestration result."""
+    """Pretty-print the orchestration result using the pipeline dashboard."""
     if as_json:
         import json
-        output = {
-            "success": result.success,
-            "target_file": result.target_file,
-            "attempts": result.attempts,
-            "errors": result.errors,
-            "agent_summaries": result.agent_summaries,
-            "generated_code": result.generated_code,
-            "validation": result.validation.to_dict() if result.validation else None,
-            "metrics": result.metrics.summary() if result.metrics else None,
-        }
+        # Use pipeline report dict for structured JSON
+        pipeline_dict = result.context.get("pipeline_report_dict")
+        if pipeline_dict:
+            output = pipeline_dict
+        else:
+            output = {
+                "success": result.success,
+                "target_file": result.target_file,
+                "attempts": result.attempts,
+                "errors": result.errors,
+                "agent_summaries": result.agent_summaries,
+                "generated_code": result.generated_code,
+                "validation": result.validation.to_dict() if result.validation else None,
+                "metrics": result.metrics.summary() if result.metrics else None,
+            }
         print(json.dumps(output, indent=2))
         return
 
-    print()
-    print("=" * 70)
-    print("  MACRO — RESULT")
-    print("=" * 70)
-    print()
-
-    if result.success:
-        print("  ✅ SUCCESS")
-    else:
-        print("  ❌ FAILED")
-        for err in result.errors:
-            print(f"     Error: {err}")
+    # Use the pipeline dashboard if available
+    pipeline_report = result.context.get("pipeline_report")
+    if pipeline_report:
         print()
-        return
+        print(pipeline_report)
+        print()
+    else:
+        # Fallback: basic display (no dashboard generated)
+        print()
+        print("=" * 70)
+        print("  MACRO — RESULT")
+        print("=" * 70)
+        print()
 
-    print(f"  > Target File:  {result.target_file}")
-    print(f"  > Attempts:     {result.attempts}")
-    print()
+        if result.success:
+            print("  ✅ SUCCESS")
+        else:
+            print("  ❌ FAILED")
+            for err in result.errors:
+                print(f"     Error: {err}")
+            print()
+            return
 
-    # Agent summaries
-    print("  > Agent Summaries:")
-    for agent_name, summary in result.agent_summaries.items():
-        print(f"     [{agent_name}] {summary}")
-    print()
+        print(f"  > Target File:  {result.target_file}")
+        print(f"  > Attempts:     {result.attempts}")
+        print()
 
-    # Validation
-    if result.validation:
-        print(f"  > Validation:   {result.validation.summary}")
-        if result.validation.warnings:
-            for w in result.validation.warnings[:5]:
-                print(f"     [!] {w.message}")
-    print()
+        # Agent summaries
+        print("  > Agent Summaries:")
+        for agent_name, summary in result.agent_summaries.items():
+            print(f"     [{agent_name}] {summary}")
+        print()
 
-    # Metrics
-    if result.metrics:
-        print(f"  > Duration:     {result.metrics.total_duration_ms:.0f}ms")
-        if result.metrics.retries > 0:
-            print(f"  > Retries:      {result.metrics.retries}")
-    print()
+        # Validation
+        if result.validation:
+            print(f"  > Validation:   {result.validation.summary}")
+            if result.validation.warnings:
+                for w in result.validation.warnings[:5]:
+                    print(f"     [!] {w.message}")
+        print()
+
+        # Metrics
+        if result.metrics:
+            print(f"  > Duration:     {result.metrics.total_duration_ms:.0f}ms")
+            if result.metrics.retries > 0:
+                print(f"  > Retries:      {result.metrics.retries}")
+        print()
 
     # Show proposed changes
     if result.changeset:
@@ -399,7 +414,80 @@ async def run(args) -> int:
             safe_writer = SafeCodeWriter(repo_path)
             report = safe_writer.apply_changes(result.changeset)
             _print_write_report(report)
-
+    
+    # ── POST-WRITE COMMANDS ───────────────────────────────────
+    # After files are written, offer to run tests, linting, git push
+    post_write = result.context.get("post_write_commands", [])
+    if post_write:
+        print("  \U0001f4cb Suggested next steps:")
+        for i, cmd in enumerate(post_write, 1):
+            risk_icons = {"safe": "\u2705", "medium": "\u26a0\ufe0f", "high": "\U0001f534"}
+            icon = risk_icons.get(cmd.get("risk", ""), "")
+            auto_tag = " (auto-run)" if cmd.get("auto") else ""
+            print(f"    {i}. {icon} {cmd['command']}{auto_tag}")
+            print(f"       \u2514\u2500 {cmd.get('reason', '')}")
+        print()
+        
+        try:
+            choice = input("  Run suggested commands? [a]ll / [s]afe-only / [n]one: ").strip().lower()
+        except (KeyboardInterrupt, EOFError):
+            choice = "n"
+        
+        if choice in ("a", "all", "y", "yes"):
+            executor = ShellExecutor(repo_path)
+            for cmd in post_write:
+                r = executor.run(cmd["command"], auto_approve=True)
+                if r.success:
+                    print(f"    \u2705 {cmd['command']} \u2014 passed ({r.duration_ms}ms)")
+                elif r.blocked_reason:
+                    print(f"    \U0001f6ab {cmd['command']} \u2014 blocked: {r.blocked_reason}")
+                else:
+                    print(f"    \u274c {cmd['command']} \u2014 failed (exit {r.returncode})")
+                    if r.stderr:
+                        for line in r.stderr.strip().split("\n")[:3]:
+                            print(f"       {line[:80]}")
+        elif choice in ("s", "safe"):
+            executor = ShellExecutor(repo_path)
+            for cmd in post_write:
+                if cmd.get("risk") == "safe":
+                    r = executor.run(cmd["command"], auto_approve=True)
+                    if r.success:
+                        print(f"    \u2705 {cmd['command']} \u2014 passed ({r.duration_ms}ms)")
+                    else:
+                        print(f"    \u274c {cmd['command']} \u2014 failed (exit {r.returncode})")
+        else:
+            print("  Skipped post-write commands.")
+    
+    # ── GIT SUGGESTIONS ───────────────────────────────────────
+    commit_msg = result.context.get("commit_message", "")
+    git_cmds = result.context.get("git_commands", [])
+    if commit_msg and git_cmds:
+        print(f"  \U0001f500 Ready to commit:")
+        print(f"    git commit -m \"{commit_msg}\"")
+        print(f"    git push origin HEAD")
+        print()
+        try:
+            choice = input("  Push to git? [y/n]: ").strip().lower()
+        except (KeyboardInterrupt, EOFError):
+            choice = "n"
+        
+        if choice in ("y", "yes"):
+            executor = ShellExecutor(repo_path)
+            # Add files
+            if result.changeset:
+                files = [c.file_path for c in result.changeset.changes]
+                if files:
+                    r = executor.run(f"git add {' '.join(files[:10])}", auto_approve=True)
+                    print(f"    {'\u2705' if r.success else '\u274c'} git add")
+            # Commit
+            r = executor.run(f'git commit -m "{commit_msg}"', auto_approve=True)
+            print(f"    {'\u2705' if r.success else '\u274c'} git commit")
+            # Push
+            r = executor.run("git push origin HEAD", auto_approve=True)
+            print(f"    {'\u2705' if r.success else '\u274c'} git push")
+        else:
+            print("  Skipped git push.")
+    
     return 0 if result.success else 1
 
 
