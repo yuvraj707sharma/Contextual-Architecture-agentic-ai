@@ -357,61 +357,194 @@ class ArchitectAgent(BaseAgent):
         
         return list(set(exports))  # Dedupe
     
+    # Banned generic filenames — forces the model to derive real names
+    BANNED_FILENAMES = {
+        "feature", "utils", "helpers", "misc", "stuff", "temp",
+        "generated", "new_file", "code", "main_new", "module",
+    }
+    
     def _suggest_target_location(
         self, 
         repo_path: Path, 
         language: str,
         user_request: str
     ) -> tuple:
-        """Suggest where new code should be placed."""
+        """Suggest where new code should be placed.
+        
+        V3: Routing, not generation.
+        Priority order:
+          1. Find an EXISTING file that's the logical home (MODIFY > CREATE)
+          2. If no match, create in the right directory with a sibling-derived name
+          3. NEVER output a banned generic filename
+        """
         request_lower = user_request.lower()
-        
-        # Map request keywords to typical directories
-        dir_hints = {
-            "auth": ["internal/auth", "pkg/auth", "src/auth", "lib/auth"],
-            "middleware": ["internal/middleware", "middleware", "src/middleware"],
-            "api": ["internal/api", "api", "pkg/api", "src/api"],
-            "database": ["internal/db", "pkg/db", "src/db", "internal/database"],
-            "config": ["internal/config", "pkg/config", "src/config"],
-            "user": ["internal/user", "pkg/user", "src/user", "internal/users"],
-            "test": ["tests", "test", "internal/test"],
-        }
-        
-        for keyword, dirs in dir_hints.items():
-            if keyword in request_lower:
-                for dir_path in dirs:
-                    if (repo_path / dir_path).exists():
-                        ext_lookup = {
-                            "go": ".go", "python": ".py", "typescript": ".ts",
-                            "javascript": ".js", "cpp": ".cpp", "c": ".c", "java": ".java",
-                        }
-                        ext = ext_lookup.get(language, ".py")
-                        feature_name = self._extract_feature_name(request_lower)
-                        return f"{dir_path}/{feature_name}{ext}", dir_path
-        
-        # Default: src/ or internal/ or root
-        feature_name = self._extract_feature_name(request_lower)
-        ext_lookup = {
-            "go": ".go", "python": ".py", "typescript": ".ts",
-            "javascript": ".js", "cpp": ".cpp", "c": ".c", "java": ".java",
-        }
-        if (repo_path / "internal").exists():
-            ext = ext_lookup.get(language, ".py")
-            return f"internal/{feature_name}{ext}", "internal"
-        if (repo_path / "src").exists():
-            ext = ext_lookup.get(language, ".py")
-            return f"src/{feature_name}{ext}", "src"
-        
-        feature_name = self._extract_feature_name(request_lower)
         ext_lookup = {
             "go": ".go", "python": ".py", "typescript": ".ts",
             "javascript": ".js", "cpp": ".cpp", "c": ".c", "java": ".java",
         }
         ext = ext_lookup.get(language, ".py")
+        
+        # ── Step 1: Try to route to an EXISTING file ─────────────
+        existing = self._find_best_existing_file(repo_path, language, request_lower)
+        if existing:
+            rel = str(existing.relative_to(repo_path))
+            package = str(existing.parent.relative_to(repo_path)) if existing.parent != repo_path else ""
+            return rel, package
+        
+        # ── Step 2: No existing match — create in best directory ─
+        # Map request keywords to typical directories
+        dir_hints = {
+            "auth": ["internal/auth", "pkg/auth", "src/auth", "lib/auth", "auth"],
+            "middleware": ["internal/middleware", "middleware", "src/middleware"],
+            "api": ["internal/api", "api", "pkg/api", "src/api", "routes", "routers"],
+            "database": ["internal/db", "pkg/db", "src/db", "internal/database", "db", "models"],
+            "config": ["internal/config", "pkg/config", "src/config", "config"],
+            "user": ["internal/user", "pkg/user", "src/user", "internal/users", "users"],
+            "test": ["tests", "test", "internal/test"],
+            "rate": ["internal/middleware", "middleware", "src/middleware"],
+            "limit": ["internal/middleware", "middleware", "src/middleware"],
+            "cache": ["internal/cache", "cache", "src/cache", "pkg/cache"],
+            "log": ["internal/logger", "logger", "src/logger", "logging"],
+            "email": ["internal/email", "email", "src/email", "notifications"],
+            "payment": ["internal/payment", "payment", "src/payment", "billing"],
+            "webhook": ["internal/webhook", "webhook", "src/webhook", "hooks"],
+        }
+        
+        feature_name = self._extract_feature_name(request_lower, repo_path, language)
+        
+        for keyword, dirs in dir_hints.items():
+            if keyword in request_lower:
+                for dir_path in dirs:
+                    if (repo_path / dir_path).exists():
+                        # Derive name from sibling files in this directory
+                        sibling_name = self._derive_sibling_name(
+                            repo_path / dir_path, feature_name, ext
+                        )
+                        return f"{dir_path}/{sibling_name}{ext}", dir_path
+        
+        # Fallback: src/ or internal/ or root
+        for base_dir in ["internal", "src", "lib", "pkg", "app"]:
+            if (repo_path / base_dir).exists():
+                sibling_name = self._derive_sibling_name(
+                    repo_path / base_dir, feature_name, ext
+                )
+                return f"{base_dir}/{sibling_name}{ext}", base_dir
+        
+        # Absolute last resort: root directory
         return f"{feature_name}{ext}", ""
     
-    def _extract_feature_name(self, request: str) -> str:
-        """Extract a descriptive snake_case filename from the user request."""
+    def _find_best_existing_file(
+        self,
+        repo_path: Path,
+        language: str,
+        request_lower: str,
+    ) -> Optional[Path]:
+        """Find an existing file that's the best home for new code.
+        
+        Returns the file if a strong match exists, None otherwise.
+        'Strong match' = filename contains 2+ keywords from the request,
+        or exactly matches the domain concept.
+        """
+        extensions = self.LANG_EXTENSIONS.get(language, [])
+        
+        # Extract meaningful keywords from request
+        noise = {"in", "to", "for", "of", "on", "by", "is", "be", "use",
+                 "using", "with", "from", "into", "should", "must", "will",
+                 "the", "an", "its", "this", "that", "all", "each", "add",
+                 "create", "build", "implement", "make", "write", "fix",
+                 "update", "modify", "refactor", "new", "existing",
+                 "app", "project", "module", "file", "code"}
+        keywords = [w for w in request_lower.split() if w not in noise and len(w) > 2]
+        
+        if not keywords:
+            return None
+        
+        best_match: Optional[Path] = None
+        best_score = 0
+        
+        for ext in extensions:
+            for file_path in list(repo_path.rglob(f"*{ext}"))[:200]:
+                if any(ignored in str(file_path) for ignored in self.IGNORE_DIRS):
+                    continue
+                
+                # Score: how many request keywords appear in the filename
+                fname = file_path.stem.lower().replace("_", " ").replace("-", " ")
+                score = sum(1 for kw in keywords if kw in fname)
+                
+                # Bonus: file is in a directory that matches a keyword
+                parent_name = file_path.parent.name.lower()
+                if any(kw in parent_name for kw in keywords):
+                    score += 0.5
+                
+                # Skip test files — don't route feature code to test files
+                if "test" in fname and "test" not in request_lower:
+                    continue
+                
+                if score > best_score:
+                    best_score = score
+                    best_match = file_path
+        
+        # Only return if we have a strong match (2+ keyword overlap)
+        if best_score >= 2:
+            return best_match
+        
+        # Single keyword match: only accept if it's an exact stem match
+        if best_score >= 1 and best_match:
+            stem = best_match.stem.lower()
+            # e.g., request has "rate limiting" and file is "rate_limiter.py"
+            if any(kw == stem or stem.startswith(kw) or stem.endswith(kw) for kw in keywords):
+                return best_match
+        
+        return None
+    
+    def _derive_sibling_name(
+        self,
+        target_dir: Path,
+        feature_name: str,
+        ext: str,
+    ) -> str:
+        """Derive a filename that matches the naming style of sibling files.
+        
+        If directory has: auth_handler.py, auth_middleware.py
+        And feature_name is 'rate_limiter'
+        → Returns 'rate_limiter' (snake_case matches siblings).
+        
+        If directory has: AuthHandler.go, AuthMiddleware.go
+        → Returns 'RateLimiter' (PascalCase matches siblings).
+        """
+        siblings = [f.stem for f in target_dir.iterdir()
+                    if f.is_file() and f.suffix == ext
+                    and f.stem.lower() not in self.BANNED_FILENAMES]
+        
+        if not siblings:
+            return feature_name  # No siblings to learn from
+        
+        # Detect sibling naming convention
+        snake_count = sum(1 for s in siblings if "_" in s)
+        camel_count = sum(1 for s in siblings if s[0].isupper() and "_" not in s)
+        kebab_count = sum(1 for s in siblings if "-" in s)
+        
+        if camel_count > snake_count and camel_count > kebab_count:
+            # PascalCase: rate_limiter → RateLimiter
+            return "".join(w.capitalize() for w in feature_name.split("_"))
+        elif kebab_count > snake_count:
+            # kebab-case: rate_limiter → rate-limiter
+            return feature_name.replace("_", "-")
+        else:
+            # snake_case: already in correct format
+            return feature_name
+    
+    def _extract_feature_name(
+        self,
+        request: str,
+        repo_path: Optional[Path] = None,
+        language: str = "python",
+    ) -> str:
+        """Extract a descriptive snake_case filename from the user request.
+        
+        V3: NEVER returns a banned generic name. If word extraction fails,
+        derives a name from the request domain or existing sibling files.
+        """
         request_clean = request.lower().strip()
         
         # Remove common prefixes
@@ -445,14 +578,55 @@ class ArchitectAgent(BaseAgent):
         words = [w for w in words if w not in noise and len(w) > 1]
         
         # Take up to 3 words for the filename
-        name_words = words[:3] if words else ["feature"]
+        name_words = words[:3] if words else []
         name = "_".join(name_words)
         
-        # Ensure valid Python identifier (no leading digits)
+        # ── V3: NEVER return a banned name ───────────────────────
+        if not name or name in self.BANNED_FILENAMES:
+            # Try domain-based fallback from the raw request
+            domain_keywords = {
+                "rate": "rate_limiter", "limit": "rate_limiter",
+                "cache": "cache_manager", "cach": "cache_manager",
+                "auth": "auth_handler", "login": "auth_handler",
+                "jwt": "jwt_handler", "token": "token_handler",
+                "email": "email_service", "mail": "email_service",
+                "log": "logger", "logging": "logger",
+                "valid": "validator", "check": "validator",
+                "config": "configuration", "setting": "settings",
+                "db": "database", "migrat": "migration",
+                "webhook": "webhook_handler", "hook": "hook_handler",
+                "payment": "payment_processor", "billing": "billing_service",
+                "upload": "file_upload", "download": "file_download",
+                "search": "search_engine", "queue": "task_queue",
+                "notify": "notification_service", "alert": "alert_service",
+                "schedule": "scheduler", "cron": "scheduler",
+                "test": "test_suite", "health": "health_check",
+                "metric": "metrics", "monitor": "monitoring",
+            }
+            for keyword, fallback_name in domain_keywords.items():
+                if keyword in request_clean:
+                    name = fallback_name
+                    break
+            
+            # Still nothing — use first two content words regardless of length
+            if not name or name in self.BANNED_FILENAMES:
+                raw_words = [w for w in cleaned.split() if len(w) > 1]
+                if raw_words:
+                    name = "_".join(raw_words[:2])
+                else:
+                    # Absolute last resort: timestamp-based (never "feature")
+                    import time
+                    name = f"impl_{int(time.time()) % 100000}"
+        
+        # Final safety check: ensure not banned
+        if name in self.BANNED_FILENAMES:
+            name = f"{name}_impl"
+        
+        # Ensure valid identifier (no leading digits)
         if name and name[0].isdigit():
             name = f"mod_{name}"
         
-        return name or "feature"
+        return name
     
     def _determine_imports(
         self, 
