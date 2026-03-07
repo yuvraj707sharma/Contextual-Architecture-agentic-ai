@@ -121,4 +121,4 @@ pip install -e ".[dev]"
 python -m pytest agents/tests/ -v
 ```
 
-280 tests across 10 test files covering all agents, orchestrator, config, logging, clarification, and reasoning display.
+420 tests across 10 test files covering all agents, orchestrator, config, logging, clarification, and reasoning display.
