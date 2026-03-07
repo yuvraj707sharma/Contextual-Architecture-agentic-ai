@@ -208,26 +208,6 @@ contextual-architect/
 └── pr_evaluator.py             # GitHub PR evaluation
 ```
 
-## Roadmap
-
-- [x] 12-stage pipeline with parallel discovery
-- [x] 7 LLM providers with auto-detection
-- [x] RAG layer (ChromaDB + AST chunking)
-- [x] Interactive setup wizard (`macro --setup`)
-- [x] Trace logging for distillation data collection
-- [x] Permission-based file writing with diff preview
-- [x] Proactive conflict detection (auth, framework, DB, language)
-- [x] Production environment detection (deployment, Docker, runtime, IaC)
-- [x] Rich reasoning display with per-agent icons
-- [x] AST-based code graph + impact analysis
-- [x] Shell executor (sandboxed `pytest`, `pip install`, `npm test`)
-- [x] Pipeline dashboard (GitHub Actions-style CI view + git push)
-- [x] 420 tests passing
-- [ ] PyPI package (`pip install macro-cli`)
-- [ ] VS Code extension
-- [ ] Model distillation (QLoRA from pipeline traces)
-- [ ] Multi-file refactoring support
-
 ## License
 
 AGPL v3 — See [LICENSE](LICENSE). You can read, modify, fork, and use MACRO for personal/educational use. Commercial SaaS use requires sharing modifications.
