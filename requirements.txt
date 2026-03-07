@@ -9,6 +9,9 @@
 # HTTP client for LLM API calls (Groq, OpenAI, Anthropic, DeepSeek, Ollama)
 httpx>=0.25.0
 
+# Rich terminal output (spinners, colors, formatting)
+rich>=13.0.0
+
 # Google Gemini SDK (used for planner agent)
 google-genai>=1.0.0
 

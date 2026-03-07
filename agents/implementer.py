@@ -279,16 +279,46 @@ class ImplementerAgent(BaseAgent):
             sections.append(f"```\n{user_pseudocode}\n```")
             sections.append("")
         
+        # ── CODE GRAPH INTELLIGENCE ──────────────────────────────
+        # Deterministic AST facts about code relationships.
+        # This tells the Implementer exactly which functions call the target,
+        # which files import it, and what the impact chain looks like.
+        graph_intel = context.prior_context.get("graph_intelligence", "")
+        if graph_intel:
+            sections.append("## 🔗 Code Relationships (AST-verified, not guesses)")
+            sections.append("These are deterministic facts from parsing the codebase:")
+            sections.append(graph_intel)
+            sections.append("")
+        
+        # ── PLAN FROM PLANNER ────────────────────────────────────
+        # The plan is the contract. The implementer MUST follow it.
+        plan_md = context.prior_context.get("plan_markdown", "")
+        if plan_md:
+            sections.append("## 📋 IMPLEMENTATION PLAN (FOLLOW EXACTLY)")
+            sections.append("You MUST follow this plan step-by-step. Do NOT freelance.")
+            sections.append("Each acceptance criterion MUST be met in your code.")
+            sections.append(plan_md)
+            sections.append("")
+        
+        # ── DETECTED CONFLICTS ───────────────────────────────────
+        conflicts = context.prior_context.get("detected_conflicts", "")
+        if conflicts:
+            sections.append("## ⚠️ DETECTED CONFLICTS (address these)")
+            sections.append("The system detected these conflicts between your request and the project:")
+            sections.append(conflicts)
+            sections.append("")
+        
         # Final instruction
         sections.append("## Generate Code")
         sections.append("Generate production-ready code that:")
         sections.append("1. Implements ONLY what was requested")
         sections.append("2. Matches the exact style of this codebase")
-        sections.append("3. Reuses existing utilities")
+        sections.append("3. Reuses existing utilities — do NOT reinvent what already exists")
         sections.append("4. Avoids the common mistakes listed above")
         sections.append("5. Is ready to pass code review")
+        sections.append("6. Follows the implementation plan step-by-step")
         if user_pseudocode:
-            sections.append("6. Follows the user pseudocode step-by-step (non-negotiable)")
+            sections.append("7. Follows the user pseudocode step-by-step (non-negotiable)")
         
         return '\n'.join(sections)
     

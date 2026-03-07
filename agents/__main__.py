@@ -179,10 +179,17 @@ def auto_detect_provider() -> str:
 
 
 def print_result(result: OrchestrationResult, orchestrator: Orchestrator, as_json: bool = False):
-    """Pretty-print the orchestration result using the pipeline dashboard."""
+    """Pretty-print the orchestration result — clean, minimal, like Claude CLI."""
+    DIM = "\033[2m"
+    GREEN = "\033[32m"
+    RED = "\033[31m"
+    CYAN = "\033[36m"
+    YELLOW = "\033[33m"
+    BOLD = "\033[1m"
+    RESET = "\033[0m"
+
     if as_json:
         import json
-        # Use pipeline report dict for structured JSON
         pipeline_dict = result.context.get("pipeline_report_dict")
         if pipeline_dict:
             output = pipeline_dict
@@ -200,73 +207,66 @@ def print_result(result: OrchestrationResult, orchestrator: Orchestrator, as_jso
         print(json.dumps(output, indent=2))
         return
 
-    # Use the pipeline dashboard if available
-    pipeline_report = result.context.get("pipeline_report")
-    if pipeline_report:
-        print()
-        print(pipeline_report)
-        print()
+    print()
+
+    # ── Header: success/fail + timing ──
+    duration = ""
+    if result.metrics:
+        duration = f" {DIM}({result.metrics.total_duration_ms/1000:.1f}s){RESET}"
+
+    if result.success:
+        print(f"  {GREEN}✓ Done{RESET}{duration}")
     else:
-        # Fallback: basic display (no dashboard generated)
+        print(f"  {RED}✗ Failed{RESET}{duration}")
+        for err in result.errors:
+            print(f"  {RED}  {err}{RESET}")
         print()
-        print("=" * 70)
-        print("  MACRO — RESULT")
-        print("=" * 70)
-        print()
+        return
 
-        if result.success:
-            print("  ✅ SUCCESS")
-        else:
-            print("  ❌ FAILED")
-            for err in result.errors:
-                print(f"     Error: {err}")
-            print()
-            return
+    # ── Target file ──
+    if result.target_file:
+        print(f"  {DIM}target{RESET}  {result.target_file}")
 
-        print(f"  > Target File:  {result.target_file}")
-        print(f"  > Attempts:     {result.attempts}")
-        print()
-
-        # Agent summaries
-        print("  > Agent Summaries:")
+    # ── Agent summaries — compact, dim ──
+    if result.agent_summaries:
         for agent_name, summary in result.agent_summaries.items():
-            print(f"     [{agent_name}] {summary}")
-        print()
+            if agent_name == "conflicts":
+                continue
+            # Truncate long summaries
+            short = summary[:100] + "..." if len(summary) > 100 else summary
+            print(f"  {DIM}{agent_name:12s}{short}{RESET}")
 
-        # Validation
-        if result.validation:
-            print(f"  > Validation:   {result.validation.summary}")
-            if result.validation.warnings:
-                for w in result.validation.warnings[:5]:
-                    print(f"     [!] {w.message}")
-        print()
+    # ── Validation ──
+    if result.validation:
+        v = result.validation
+        if v.passed:
+            print(f"  {GREEN}✓ review{RESET}  {DIM}{v.summary}{RESET}")
+        else:
+            print(f"  {YELLOW}! review{RESET}  {v.summary}")
+            for w in (v.warnings or [])[:3]:
+                print(f"  {DIM}          {w.message}{RESET}")
 
-        # Metrics
-        if result.metrics:
-            print(f"  > Duration:     {result.metrics.total_duration_ms:.0f}ms")
-            if result.metrics.retries > 0:
-                print(f"  > Retries:      {result.metrics.retries}")
-        print()
+    print()
 
-    # Show proposed changes
+    # ── Proposed changes ──
     if result.changeset:
         changes_output = orchestrator.show_changes(result)
-        print("  > Proposed Changes:")
-        for line in changes_output.split("\n"):
-            print(f"     {line}")
-        print()
+        if changes_output and changes_output.strip():
+            print(f"  {BOLD}Changes:{RESET}")
+            for line in changes_output.strip().split("\n"):
+                print(f"    {line}")
+            print()
 
-    # Show generated code preview
+    # ── Code preview — clean, no boxes ──
     if result.generated_code:
-        print("  > Generated Code Preview:")
-        print("  " + "-" * 60)
         lines = result.generated_code.split("\n")
-        for line in lines[:40]:
-            print(f"  | {line}")
-        if len(lines) > 40:
-            print(f"  | ... ({len(lines) - 40} more lines)")
-        print("  " + "-" * 60)
-    print()
+        preview_count = min(30, len(lines))
+        print(f"  {DIM}─── preview ({len(lines)} lines) ───{RESET}")
+        for line in lines[:preview_count]:
+            print(f"  {DIM}│{RESET} {line}")
+        if len(lines) > preview_count:
+            print(f"  {DIM}│ ... {len(lines) - preview_count} more lines{RESET}")
+        print()
 
 
 async def run(args) -> int:

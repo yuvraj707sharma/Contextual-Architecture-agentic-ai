@@ -59,64 +59,44 @@ def _can_render_unicode() -> bool:
 
 
 def print_banner(repo_path: str, provider: str, lang: str, config: AgentConfig):
-    """Print the startup banner -- adapts to terminal capabilities."""
-    use_unicode = _can_render_unicode()
+    """Print the startup banner — clean, minimal, like Claude/Gemini CLI."""
     print()
 
-    # MACRO logo -- safe ASCII art (works on every terminal)
-    logo = r"""
-      __  __    _    ____ ____   ___
-     |  \/  |  / \  / ___|  _ \ / _ \
-     | |\/| | / _ \| |   | |_) | | | |
-     | |  | |/ ___ \ |___|  _ <| |_| |
-     |_|  |_/_/   \_\____|_| \_\\___/
-    """
-    print(Colors.colored(logo, Colors.CYAN))
-    print(Colors.colored("     Multi-Agent Contextual Repository Orchestrator", Colors.DIM))
+    # Clean one-line title
+    print(Colors.colored("  macro", Colors.CYAN + Colors.BOLD) +
+          Colors.colored(" v0.3.0", Colors.DIM) +
+          Colors.colored("  ·  ", Colors.DIM) +
+          Colors.colored(provider, Colors.GREEN) +
+          Colors.colored("  ·  ", Colors.DIM) +
+          Colors.colored(lang, Colors.CYAN))
     print()
 
-    # Agent pipeline
-    if use_unicode:
-        print(Colors.colored("  Agents: ", Colors.DIM) +
-              Colors.colored("\u25c9 ", Colors.BLUE) + Colors.colored("Historian", Colors.DIM) +
-              Colors.colored(" \u2192 ", Colors.DIM) +
-              Colors.colored("\u25c9 ", Colors.MAGENTA) + Colors.colored("Planner", Colors.DIM) +
-              Colors.colored(" \u2192 ", Colors.DIM) +
-              Colors.colored("\u25c9 ", Colors.GREEN) + Colors.colored("Implementer", Colors.DIM) +
-              Colors.colored(" \u2192 ", Colors.DIM) +
-              Colors.colored("\u25c9 ", Colors.RED) + Colors.colored("Reviewer", Colors.DIM))
-    else:
-        print(Colors.colored("  Agents: ", Colors.DIM) +
-              Colors.colored("* ", Colors.BLUE) + Colors.colored("Historian", Colors.DIM) +
-              Colors.colored(" -> ", Colors.DIM) +
-              Colors.colored("* ", Colors.MAGENTA) + Colors.colored("Planner", Colors.DIM) +
-              Colors.colored(" -> ", Colors.DIM) +
-              Colors.colored("* ", Colors.GREEN) + Colors.colored("Implementer", Colors.DIM) +
-              Colors.colored(" -> ", Colors.DIM) +
-              Colors.colored("* ", Colors.RED) + Colors.colored("Reviewer", Colors.DIM))
-    print()
-
-    # Config box
-    h_line = "\u2500" if use_unicode else "-"
-    tl, tr, bl, br, v = ("\u250c", "\u2510", "\u2514", "\u2518", "\u2502") if use_unicode else ("+", "+", "+", "+", "|")
-    header = f"  {tl}{h_line} Config {h_line * 41}{tr}"
-    footer = f"  {bl}{h_line * 50}{br}"
-
-    print(Colors.colored(header, Colors.DIM))
-    print(Colors.colored(f"  {v}", Colors.DIM) + "  > Repo:     " + Colors.colored(repo_path, Colors.WHITE))
-    print(Colors.colored(f"  {v}", Colors.DIM) + "  > Language: " + Colors.colored(lang, Colors.CYAN))
-    print(Colors.colored(f"  {v}", Colors.DIM) + "  > Provider: " + Colors.colored(provider, Colors.GREEN))
+    # Project info — compact
+    print(Colors.colored("  repo  ", Colors.DIM) + repo_path)
     if config.planner_provider:
-        print(Colors.colored(f"  {v}", Colors.DIM) + "  > Planner:  " + Colors.colored(config.planner_provider, Colors.YELLOW))
-    if config.implementer_provider:
-        print(Colors.colored(f"  {v}", Colors.DIM) + "  > Implmtr:  " + Colors.colored(config.implementer_provider, Colors.YELLOW))
-    print(Colors.colored(footer, Colors.DIM))
+        print(Colors.colored("  plan  ", Colors.DIM) + config.planner_provider +
+              Colors.colored("  (smart planner)", Colors.DIM))
     print()
 
-    # Quick start hints
-    print(Colors.colored("  [?] Chat: ", Colors.CYAN) + Colors.colored("Ask questions about your code", Colors.DIM))
-    print(Colors.colored("  [+] Build: ", Colors.GREEN) + Colors.colored("Type what you want to build", Colors.DIM))
-    print(Colors.colored("  [!] Help:  ", Colors.YELLOW) + Colors.colored("Type ", Colors.DIM) + Colors.colored("help", Colors.BOLD) + Colors.colored(" for all commands", Colors.DIM))
+    # Pipeline — clean dotted chain
+    stages = [
+        ("scan", Colors.CYAN), ("graph", Colors.CYAN),
+        ("plan", Colors.GREEN), ("code", Colors.YELLOW),
+        ("review", Colors.RED), ("test", Colors.CYAN),
+        ("write", Colors.GREEN),
+    ]
+    pipeline = "  "
+    for i, (name, color) in enumerate(stages):
+        pipeline += Colors.colored(name, color)
+        if i < len(stages) - 1:
+            pipeline += Colors.colored(" → ", Colors.DIM)
+    print(pipeline)
+    print()
+
+    # Quick start — minimal
+    print(Colors.colored("  ask   ", Colors.DIM) + Colors.colored("questions about your code", Colors.DIM))
+    print(Colors.colored("  build ", Colors.DIM) + Colors.colored("type what you want to build", Colors.DIM))
+    print(Colors.colored("  help  ", Colors.DIM) + Colors.colored("show all commands", Colors.DIM))
     print()
 
 

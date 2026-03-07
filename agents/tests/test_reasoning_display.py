@@ -60,9 +60,9 @@ class TestReasoningDisplay:
         rd.emit("scanner", "Found 10 files")
         rd.emit("planner", "Creating plan")
         summary = rd.get_summary()
-        assert "SCANNER" in summary
+        assert "Scanner" in summary
         assert "Found 10 files" in summary
-        assert "PLANNER" in summary
+        assert "Planner" in summary
 
     def test_get_steps_for_agent(self):
         rd = ReasoningDisplay(streaming=False)
@@ -105,7 +105,7 @@ class TestAgentStyles:
 
     def test_style_has_required_keys(self):
         for agent, style in AGENT_STYLES.items():
-            assert "icon" in style, f"{agent} missing icon"
+            assert "marker" in style, f"{agent} missing marker"
             assert "color" in style, f"{agent} missing color"
             assert "rich_style" in style, f"{agent} missing rich_style"
 
@@ -135,8 +135,8 @@ class TestGlobalSingleton:
 class TestSummaryIcons:
     """Tests that summary output includes agent icons."""
 
-    def test_summary_has_icons(self):
+    def test_summary_has_icons_keys(self):
         rd = ReasoningDisplay(streaming=False)
         rd.emit("scanner", "Scanning...")
         summary = rd.get_summary()
-        assert "🔍" in summary  # scanner icon
+        assert "\u25b8" in summary  # scanner marker (▸)

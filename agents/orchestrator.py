@@ -389,6 +389,7 @@ class Orchestrator:
         # Running them all concurrently for maximum speed.
         
         self.reasoning.emit("discovery", "Running parallel discovery (Style + History + Architecture)...")
+        self.reasoning.start_spinner("Analyzing project conventions...")
         
         self.logger.info(
             "Starting parallel discovery (PR Search + Style + Historian + Architect)",
@@ -416,7 +417,9 @@ class Orchestrator:
                     pr_task, style_task, historian_task, architect_task
                 )
             )
+            self.reasoning.stop_spinner("Discovery complete")
         except Exception as e:
+            self.reasoning.stop_spinner()
             result.errors.append(f"Parallel discovery failed: {e}")
             self.logger.error(
                 f"Parallel discovery failed: {e}",
@@ -596,6 +599,7 @@ class Orchestrator:
         # by the Implementer on every retry attempt.
         
         self.reasoning.emit("planner", f"Planning: {user_request[:80]}...")
+        self.reasoning.start_spinner("Creating implementation plan...")
         
         self.logger.info(
             "Running Planner Agent",
@@ -604,6 +608,7 @@ class Orchestrator:
         
         with timed_operation(self.logger, "planner"):
             planner_response = await self.planner.process(context)
+        self.reasoning.stop_spinner("Plan created")
         
         if not planner_response.success:
             result.errors.append(f"Planner failed: {planner_response.summary}")
@@ -755,8 +760,10 @@ class Orchestrator:
                 f"Generating code (attempt {attempt}/{max_retries})..."
                 + (f" Target: {result.target_file}" if result.target_file else ""),
             )
+            self.reasoning.start_spinner(f"Writing code (attempt {attempt}/{max_retries})...")
             with timed_operation(self.logger, f"implementer_attempt_{attempt}"):
                 impl_response = await self.implementer.process(context)
+            self.reasoning.stop_spinner("Code generated")
             
             if not impl_response.success:
                 result.errors.append(f"Implementer failed: {impl_response.summary}")
