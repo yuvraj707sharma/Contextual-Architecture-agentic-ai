@@ -14,13 +14,12 @@ The plan is written to workspace/plan.md and RE-READ by the
 Implementer on every retry — this is the anti-hallucination anchor.
 """
 
-import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List
 
-from .base import BaseAgent, AgentContext, AgentResponse, AgentRole
+from .base import AgentContext, AgentResponse, AgentRole, BaseAgent
 from .logger import get_logger
 
 logger = get_logger("planner")
@@ -285,7 +284,7 @@ class PlannerAgent(BaseAgent):
         # Determine target files from Architect context
         architect_data = context.prior_context.get("architect", {})
         target_file = architect_data.get("target_file", "")
-        related_files = architect_data.get("related_files", [])
+        architect_data.get("related_files", [])
         utilities = architect_data.get("utilities", [])
 
         # Build target files list — user-referenced files take priority
@@ -295,7 +294,7 @@ class PlannerAgent(BaseAgent):
                 target_files.append({
                     "path": ref_file,
                     "action": "MODIFY",
-                    "reason": f"Explicitly referenced by user in request",
+                    "reason": "Explicitly referenced by user in request",
                 })
         elif target_file:
             action_type = "MODIFY" if self._file_exists(
@@ -357,17 +356,17 @@ class PlannerAgent(BaseAgent):
 
     def _extract_file_references(self, request: str, repo_path: str, language: str) -> list:
         """Extract explicit file names referenced in the user's request.
-        
+
         Detects patterns like:
           "Add X to foo.py"          → ["foo.py"]
           "Modify enemy_game.py"     → ["enemy_game.py"]
           "Update Movie_ticket_pricing.py" → ["Movie_ticket_pricing.py"]
-          
+
         Only returns files that actually exist in the repo.
         """
         import re
         from pathlib import Path
-        
+
         # File extension patterns per language
         ext_map = {
             "python": r"\b([\w/\\.-]+\.py)\b",
@@ -375,19 +374,19 @@ class PlannerAgent(BaseAgent):
             "typescript": r"\b([\w/\\.-]+\.(?:ts|tsx))\b",
             "go": r"\b([\w/\\.-]+\.go)\b",
         }
-        
+
         pattern = ext_map.get(language, r"\b([\w/\\.-]+\.\w{1,4})\b")
-        
+
         # Find all file-like references in the request
         matches = re.findall(pattern, request, re.IGNORECASE)
-        
+
         if not matches:
             return []
-        
+
         # Validate: only return files that actually exist in the repo
         found = []
         repo = Path(repo_path) if repo_path else None
-        
+
         for match in matches:
             if not repo:
                 continue
@@ -402,7 +401,7 @@ class PlannerAgent(BaseAgent):
                     rel = str(f.relative_to(repo)).replace("\\", "/")
                     found.append(rel)
                     break
-        
+
         return found
 
     def _parse_request_intent(self, request: str) -> tuple:

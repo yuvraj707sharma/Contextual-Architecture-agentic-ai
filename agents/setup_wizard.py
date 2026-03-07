@@ -8,11 +8,10 @@ Guides users through:
 4. Config save + next steps
 """
 
-import sys
-import os
 import importlib
+import os
+import sys
 from typing import Optional, Tuple
-
 
 # ASCII-safe output only (no emoji -- Windows cmd compatibility)
 
@@ -90,7 +89,7 @@ def _print_header():
 def _print_step(step: int, total: int, title: str):
     """Print a step header."""
     print(f"  [{step}/{total}] {title}")
-    print(f"  " + "-" * 45)
+    print("  " + "-" * 45)
 
 
 def _input_choice(prompt: str, valid: list, default: str = "") -> str:
@@ -210,11 +209,11 @@ def select_provider_interactive() -> Tuple[str, str]:
     print()
     print("  Available providers:")
     print()
-    
+
     for i, p in enumerate(PROVIDERS, 1):
         tag = " <-- Recommended (FREE)" if p["recommended"] else ""
         print(f"    [{i}] {p['name']:<22} {p['cost']}{tag}")
-    
+
     print(f"    [{len(PROVIDERS) + 1}] I already have a key set in environment variables")
     print()
 
@@ -266,7 +265,7 @@ def ask_multi_provider() -> Tuple[Optional[str], Optional[str]]:
         print("  Select the SMART provider (for Planner + Implementer):")
         for i, p in enumerate(PROVIDERS, 1):
             print(f"    [{i}] {p['name']:<22} {p['cost']}")
-        
+
         valid = [str(i) for i in range(1, len(PROVIDERS) + 1)]
         idx = int(_input_choice("Enter choice", valid)) - 1
         provider = PROVIDERS[idx]
@@ -297,8 +296,8 @@ def run_setup():
     deps_ok, missing = check_dependencies()
     if not deps_ok:
         print(f"\n  [!] Missing dependencies: {', '.join(missing)}")
-        print(f"  Run: pip install -r requirements.txt")
-        print(f"  Then run: macro --setup")
+        print("  Run: pip install -r requirements.txt")
+        print("  Then run: macro --setup")
         sys.exit(1)
 
     print("\n  [OK] System check passed.\n")
@@ -309,7 +308,7 @@ def run_setup():
     # Check for existing keys first
     existing = detect_existing_keys()
     if existing:
-        print(f"\n  Found existing API keys:")
+        print("\n  Found existing API keys:")
         for p, masked in existing:
             print(f"    - {p['env_var']} = {masked}")
         print()
@@ -330,15 +329,15 @@ def run_setup():
     _print_step(3, total_steps, "Testing Connection")
     print()
     print(f"  Testing {provider_id} API key...", end=" ", flush=True)
-    
+
     ok, model_or_error = test_api_key(provider_id, api_key)
-    
+
     if ok:
         print(f"OK ({model_or_error})")
     else:
-        print(f"FAILED")
+        print("FAILED")
         print(f"\n  Error: {model_or_error}")
-        print(f"\n  Please check your API key and try again.")
+        print("\n  Please check your API key and try again.")
         retry = _input_choice(
             "Save anyway and fix later? (y/n)",
             ["y", "n", "Y", "N"],
@@ -391,7 +390,7 @@ def run_setup():
     print()
 
     if planner_provider:
-        print(f"  Your config:")
+        print("  Your config:")
         print(f"    Main provider:    {provider_id} (fast agents)")
         print(f"    Planner provider: {planner_provider} (smart agents)")
     else:

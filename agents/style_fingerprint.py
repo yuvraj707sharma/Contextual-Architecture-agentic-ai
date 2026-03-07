@@ -11,17 +11,17 @@ Key Insight:
 """
 
 import re
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Any
-from collections import Counter
+from typing import Any, Dict, List
 
 
 @dataclass
 class StyleFingerprint:
     """
     A fingerprint of a project's coding style.
-    
+
     This captures:
     - Naming conventions (camelCase vs snake_case)
     - Formatting preferences (spaces, indentation)
@@ -30,40 +30,40 @@ class StyleFingerprint:
     - Error handling patterns
     - Logging preferences
     """
-    
+
     # Naming
     function_naming: str = "unknown"  # camelCase, snake_case, PascalCase
     variable_naming: str = "unknown"
     class_naming: str = "unknown"
-    
+
     # Formatting
     indent_style: str = "spaces"  # spaces or tabs
     indent_size: int = 4
     max_line_length: int = 100
-    
+
     # Imports
     import_style: str = "grouped"  # grouped, alphabetical, random
     import_aliases: Dict[str, str] = field(default_factory=dict)  # {"fmt": "f"}
-    
+
     # Comments
     comment_style: str = "inline"  # inline, docstring, jsdoc
     uses_todos: bool = True
-    
+
     # Error handling
     error_style: str = "return"  # return, raise, panic
     wraps_errors: bool = True
-    
+
     # Logging
     logger_library: str = "unknown"  # zerolog, zap, logrus, logging, console
     log_format: str = "structured"  # structured, printf, template
-    
+
     # Testing
     test_framework: str = "unknown"
     test_naming: str = "test_"  # test_, Test, spec_
-    
+
     # Detected patterns (raw examples)
     examples: Dict[str, List[str]] = field(default_factory=dict)
-    
+
     def to_prompt_context(self) -> str:
         """Generate style instructions for LLM prompt."""
         lines = [
@@ -86,7 +86,7 @@ class StyleFingerprint:
             f"- Library: {self.logger_library}",
             f"- Format: {self.log_format}",
         ]
-        
+
         # Add real examples
         if self.examples:
             lines.append("")
@@ -95,9 +95,9 @@ class StyleFingerprint:
                 lines.append(f"\n**{category}:**")
                 for snippet in snippets[:2]:
                     lines.append(f"```\n{snippet}\n```")
-        
+
         return "\n".join(lines)
-    
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "function_naming": self.function_naming,
@@ -119,11 +119,11 @@ class StyleFingerprint:
 class StyleAnalyzer:
     """
     Analyzes a codebase to extract its StyleFingerprint.
-    
+
     This is the "learning" side - it reads existing code and figures out
     how this specific project is written.
     """
-    
+
     # Common patterns for different languages
     LANG_CONFIG = {
         "python": {
@@ -189,73 +189,73 @@ class StyleAnalyzer:
             ],
         },
     }
-    
+
     def __init__(self, repo_path: str, language: str):
         self.repo_path = Path(repo_path)
         self.language = language
         self.config = self.LANG_CONFIG.get(language, {})
-    
+
     def analyze(self) -> StyleFingerprint:
         """Analyze the codebase and return a StyleFingerprint."""
         fingerprint = StyleFingerprint()
-        
+
         if not self.config:
             return fingerprint
-        
+
         # Collect all relevant files
         files = self._get_code_files()
-        
+
         if not files:
             return fingerprint
-        
+
         # Analyze naming conventions
         fingerprint.function_naming = self._detect_naming_style(files, "function")
         fingerprint.variable_naming = self._detect_naming_style(files, "variable")
         fingerprint.class_naming = self._detect_naming_style(files, "class")
-        
+
         # Analyze formatting
         fingerprint.indent_style, fingerprint.indent_size = self._detect_indentation(files)
         fingerprint.max_line_length = self._detect_line_length(files)
-        
+
         # Analyze error handling
         fingerprint.error_style, fingerprint.wraps_errors = self._detect_error_style(files)
-        
+
         # Analyze logging
         fingerprint.logger_library, fingerprint.log_format = self._detect_logging(files)
-        
+
         # Analyze testing
         fingerprint.test_framework, fingerprint.test_naming = self._detect_testing(files)
-        
+
         # Collect examples
         fingerprint.examples = self._collect_examples(files)
-        
+
         return fingerprint
-    
+
     def _get_code_files(self) -> List[Path]:
         """Get all code files for this language."""
         extensions = self.config.get("extensions", [])
         files = []
-        
+
         ignore_dirs = {
             ".git", "vendor", "node_modules", "__pycache__",
             ".venv", "venv", "dist", "build", ".next"
         }
-        
+
         for ext in extensions:
             for f in self.repo_path.rglob(f"*{ext}"):
                 if not any(ignored in str(f) for ignored in ignore_dirs):
                     files.append(f)
-        
+
         return files[:100]  # Limit to avoid huge repos
-    
+
     def _detect_naming_style(self, files: List[Path], name_type: str) -> str:
         """Detect naming convention (camelCase, snake_case, PascalCase)."""
         pattern_key = f"{name_type}_pattern"
         pattern = self.config.get(pattern_key)
-        
+
         if not pattern:
             return "unknown"
-        
+
         names = []
         for file_path in files[:30]:
             try:
@@ -264,28 +264,28 @@ class StyleAnalyzer:
                 names.extend(matches)
             except Exception:
                 continue
-        
+
         if not names:
             return "unknown"
-        
+
         # Count naming styles
         snake = sum(1 for n in names if '_' in n and n.islower())
         camel = sum(1 for n in names if n[0].islower() and any(c.isupper() for c in n))
         pascal = sum(1 for n in names if n[0].isupper() and any(c.islower() for c in n))
-        
+
         if snake > camel and snake > pascal:
             return "snake_case"
         if camel > snake and camel > pascal:
             return "camelCase"
         if pascal > snake and pascal > camel:
             return "PascalCase"
-        
+
         return "mixed"
-    
+
     def _detect_indentation(self, files: List[Path]) -> tuple:
         """Detect indentation style and size."""
         indent_counts = Counter()
-        
+
         for file_path in files[:20]:
             try:
                 content = file_path.read_text(encoding='utf-8', errors='ignore')
@@ -298,23 +298,23 @@ class StyleAnalyzer:
                         indent_counts['2spaces'] += 1
             except Exception:
                 continue
-        
+
         if not indent_counts:
             return "spaces", 4
-        
+
         most_common = indent_counts.most_common(1)[0][0]
-        
+
         if most_common == 'tabs':
             return "tabs", 1
         elif most_common == '2spaces':
             return "spaces", 2
         else:
             return "spaces", 4
-    
+
     def _detect_line_length(self, files: List[Path]) -> int:
         """Detect typical max line length."""
         max_lengths = []
-        
+
         for file_path in files[:20]:
             try:
                 content = file_path.read_text(encoding='utf-8', errors='ignore')
@@ -325,21 +325,21 @@ class StyleAnalyzer:
                     max_lengths.append(file_max)
             except Exception:
                 continue
-        
+
         if not max_lengths:
             return 100
-        
+
         # 90th percentile
         max_lengths.sort()
         idx = int(len(max_lengths) * 0.9)
         return max_lengths[idx] if idx < len(max_lengths) else 100
-    
+
     def _detect_error_style(self, files: List[Path]) -> tuple:
         """Detect error handling style."""
         patterns = self.config.get("error_patterns", [])
         counts = Counter()
         wraps = False
-        
+
         for file_path in files[:30]:
             try:
                 content = file_path.read_text(encoding='utf-8', errors='ignore')
@@ -350,18 +350,18 @@ class StyleAnalyzer:
                             wraps = True
             except Exception:
                 continue
-        
+
         if not counts:
             return "unknown", False
-        
+
         most_common = counts.most_common(1)[0][0]
         return most_common, wraps
-    
+
     def _detect_logging(self, files: List[Path]) -> tuple:
         """Detect logging library and format."""
         patterns = self.config.get("logging_patterns", [])
         counts = Counter()
-        
+
         for file_path in files[:30]:
             try:
                 content = file_path.read_text(encoding='utf-8', errors='ignore')
@@ -370,26 +370,26 @@ class StyleAnalyzer:
                         counts[name] += 1
             except Exception:
                 continue
-        
+
         if not counts:
             return "unknown", "unknown"
-        
+
         library = counts.most_common(1)[0][0]
-        
+
         # Determine format
         structured = {"zerolog", "zap", "structlog", "pino", "winston"}
         log_format = "structured" if library in structured else "printf"
-        
+
         return library, log_format
-    
+
     def _detect_testing(self, files: List[Path]) -> tuple:
         """Detect testing framework and naming convention."""
         patterns = self.config.get("test_patterns", [])
         counts = Counter()
-        
+
         # Look specifically in test files
         test_files = [f for f in files if "test" in f.name.lower()]
-        
+
         for file_path in test_files[:20]:
             try:
                 content = file_path.read_text(encoding='utf-8', errors='ignore')
@@ -398,12 +398,12 @@ class StyleAnalyzer:
                         counts[name] += 1
             except Exception:
                 continue
-        
+
         if not counts:
             return "unknown", "test_"
-        
+
         framework = counts.most_common(1)[0][0]
-        
+
         # Detect naming
         if self.language == "python":
             naming = "test_"
@@ -411,9 +411,9 @@ class StyleAnalyzer:
             naming = "Test"
         else:
             naming = "test_"
-        
+
         return framework, naming
-    
+
     def _collect_examples(self, files: List[Path]) -> Dict[str, List[str]]:
         """Collect representative code examples."""
         examples = {
@@ -421,36 +421,36 @@ class StyleAnalyzer:
             "function_signature": [],
             "logging": [],
         }
-        
+
         for file_path in files[:10]:
             try:
                 content = file_path.read_text(encoding='utf-8', errors='ignore')
                 lines = content.split('\n')
-                
+
                 for i, line in enumerate(lines):
                     # Error handling examples
                     if self.language == "go" and "err != nil" in line:
                         snippet = '\n'.join(lines[max(0, i-1):min(len(lines), i+4)])
                         if len(snippet) < 200:
                             examples["error_handling"].append(snippet)
-                    
+
                     # Function signature examples
                     if self.language == "python" and line.strip().startswith("def "):
                         examples["function_signature"].append(line.strip())
                     elif self.language == "go" and line.strip().startswith("func "):
                         examples["function_signature"].append(line.strip())
-                    
+
                     # Logging examples
                     if "log." in line.lower() or "logger." in line.lower():
                         if len(line.strip()) < 100:
                             examples["logging"].append(line.strip())
             except Exception:
                 continue
-        
+
         # Limit examples
         for key in examples:
             examples[key] = examples[key][:3]
-        
+
         return examples
 
 

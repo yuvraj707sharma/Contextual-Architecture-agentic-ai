@@ -22,9 +22,9 @@ Usage:
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Set
+from typing import List, Set
 
-from .graph_builder import RepoGraph, CodeNode
+from .graph_builder import RepoGraph
 
 logger = logging.getLogger(__name__)
 

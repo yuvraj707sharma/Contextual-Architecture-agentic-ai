@@ -1,12 +1,10 @@
 """Tests for Planner Agent."""
 
-import asyncio
 
 import pytest
 
-from agents.base import AgentContext, AgentRole
+from agents.base import AgentContext
 from agents.planner import PlannerAgent, PlannerOutput
-
 
 # ── Fixtures ─────────────────────────────────────────────
 

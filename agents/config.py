@@ -7,11 +7,11 @@ All hardcoded values converge here. Load from:
 3. Config file (YAML or TOML, optional)
 """
 
-import os
 import json
-from dataclasses import dataclass, field, asdict
-from typing import Optional, Dict, Any
+import os
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from typing import Any, Dict, Optional
 
 
 @dataclass
@@ -73,10 +73,10 @@ class AgentConfig:
     @classmethod
     def from_project_yaml(cls, repo_path: str) -> "AgentConfig":
         """Load config from .macro.yaml in the project root.
-        
+
         This is a per-project config that teams check into git.
         It layers on top of the user config (env vars still override).
-        
+
         .macro.yaml format:
             language: python
             test_runner: pytest
@@ -95,25 +95,25 @@ class AgentConfig:
               - "generated/"
         """
         import importlib
-        
+
         yaml_path = Path(repo_path) / ".macro.yaml"
         if not yaml_path.exists():
             yaml_path = Path(repo_path) / ".macro.yml"
         if not yaml_path.exists():
             return cls()  # No project config, return defaults
-        
+
         try:
             yaml = importlib.import_module("yaml")
             data = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
         except ImportError:
             # YAML not installed, try JSON fallback
             data = json.loads(yaml_path.read_text(encoding="utf-8"))
-        
+
         if not isinstance(data, dict):
             return cls()
-        
+
         kwargs: Dict[str, Any] = {}
-        
+
         # Top-level fields
         if "language" in data:
             kwargs["default_language"] = data["language"]
@@ -121,7 +121,7 @@ class AgentConfig:
             pass  # Scanner detects this; log for reference
         if "max_retries" in data:
             kwargs["max_retries"] = int(data["max_retries"])
-        
+
         # Style section
         style = data.get("style", {})
         if isinstance(style, dict):
@@ -132,7 +132,7 @@ class AgentConfig:
                 kwargs["max_line_length"] = int(style["max_line_length"])
             if "logging" in style:
                 kwargs["style_logging"] = style["logging"]
-        
+
         # Agents section (provider routing)
         agents = data.get("agents", {})
         if isinstance(agents, dict):
@@ -141,7 +141,7 @@ class AgentConfig:
             if "smart_provider" in agents:
                 kwargs["planner_provider"] = agents["smart_provider"]
                 kwargs["implementer_provider"] = agents["smart_provider"]
-        
+
         # Security section
         security = data.get("security", {})
         if isinstance(security, dict):
@@ -149,18 +149,18 @@ class AgentConfig:
                 kwargs["security_cwe_denylist"] = list(security["cwe_denylist"])
             if "require_reviewer" in security:
                 kwargs["security_require_reviewer"] = bool(security["require_reviewer"])
-        
+
         # Ignore patterns
         ignore = data.get("ignore", [])
         if isinstance(ignore, list):
             kwargs["ignore_patterns"] = ignore
-        
+
         # Logging
         if "log_level" in data:
             kwargs["log_level"] = data["log_level"]
         if "log_format" in data:
             kwargs["log_format"] = data["log_format"]
-        
+
         return cls(**kwargs)
 
     @classmethod
@@ -201,10 +201,10 @@ class AgentConfig:
         if "llm_provider" not in kwargs or "llm_api_key" not in kwargs:
             from .llm_client import detect_provider_from_env
             detected_provider, detected_key = detect_provider_from_env()
-            
+
             if "llm_provider" not in kwargs and detected_provider != "mock":
                 kwargs["llm_provider"] = detected_provider
-            
+
             if "llm_api_key" not in kwargs and detected_key:
                 kwargs["llm_api_key"] = detected_key
 
@@ -260,7 +260,7 @@ class AgentConfig:
 
     def save_to_file(self, path: Optional[str] = None):
         """Save config to JSON for reuse.
-        
+
         API keys are saved in plaintext but the file is protected
         with owner-only permissions (chmod 0o600 on Unix).
         For display/logging, use to_dict() which masks keys.
@@ -270,11 +270,11 @@ class AgentConfig:
         data = asdict(self)
         # Don't save None values
         data = {k: v for k, v in data.items() if v is not None}
-        
+
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
-        
+
         # SECURITY: Set file permissions to owner-only (VULN-6)
         try:
             if os.name != 'nt':  # Unix/Mac
@@ -290,7 +290,7 @@ class AgentConfig:
                 )
         except OSError:
             pass  # Best effort
-        
+
         return path
 
     @classmethod
@@ -304,7 +304,7 @@ class AgentConfig:
                 base = cls()
         else:
             base = cls()
-        
+
         # Layer env vars on top (only override if explicitly set)
         env_map = {
             "CA_LLM_PROVIDER": "llm_provider",
@@ -322,15 +322,15 @@ class AgentConfig:
             "CA_LOG_FORMAT": "log_format",
             "CA_BACKUP_DIR": "backup_dir",
         }
-        
+
         # Load env-based config to layer on top
         env_config = cls.from_env()
-        
+
         # Only override fields where the env var is actually present
         for env_key, field_name in env_map.items():
             if os.environ.get(env_key) is not None:
                 setattr(base, field_name, getattr(env_config, field_name))
-        
+
         # Also layer provider-specific API keys from env
         provider_env_keys = [
             ("GROQ_API_KEY", "groq"),
@@ -347,7 +347,7 @@ class AgentConfig:
                     base.llm_provider = env_config.llm_provider
                 base.llm_api_key = env_config.llm_api_key
                 break  # First found wins (same priority as detect_provider_from_env)
-        
+
         return base
 
 

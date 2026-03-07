@@ -17,12 +17,12 @@ Engineering:
 - google-genai is optional — only imported when GeminiClient is used
 """
 
-import os
 import asyncio
 import logging
+import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Optional, Dict, Any, List
+from typing import Any, Dict, List, Optional
 
 import httpx
 
@@ -82,7 +82,7 @@ class LLMResponse:
 
 class BaseLLMClient(ABC):
     """Abstract base class for all LLM clients."""
-    
+
     @abstractmethod
     async def generate(
         self,
@@ -93,13 +93,13 @@ class BaseLLMClient(ABC):
     ) -> LLMResponse:
         """Generate a response from the LLM."""
         pass
-    
+
     @property
     @abstractmethod
     def model_name(self) -> str:
         """Name of the model being used."""
         pass
-    
+
     async def close(self):
         """Close any underlying connections. Override in subclasses."""
         pass
@@ -108,14 +108,14 @@ class BaseLLMClient(ABC):
 class DeepSeekClient(BaseLLMClient):
     """
     DeepSeek API Client.
-    
+
     - Model: deepseek-coder or deepseek-chat
     - Cost: ~$0.14/1M input, $0.28/1M output (VERY cheap)
     - Quality: Nearly GPT-4 level for code
-    
+
     Get API key: https://platform.deepseek.com/
     """
-    
+
     def __init__(
         self,
         api_key: Optional[str] = None,
@@ -125,18 +125,18 @@ class DeepSeekClient(BaseLLMClient):
         self.api_key = api_key or os.getenv("DEEPSEEK_API_KEY")
         if not self.api_key:
             raise ValueError("DEEPSEEK_API_KEY not found")
-        
+
         self.model = model
         self.base_url = base_url
         self._client = httpx.AsyncClient(timeout=120)
-    
+
     @property
     def model_name(self) -> str:
         return f"deepseek/{self.model}"
-    
+
     async def close(self):
         await self._client.aclose()
-    
+
     async def generate(
         self,
         system_prompt: str,
@@ -163,7 +163,7 @@ class DeepSeekClient(BaseLLMClient):
             )
             response.raise_for_status()
             return response.json()
-        
+
         data = await _retry_request(_call)
         choice = data["choices"][0]
         return LLMResponse(
@@ -178,15 +178,15 @@ class DeepSeekClient(BaseLLMClient):
 class OllamaClient(BaseLLMClient):
     """
     Ollama Client for local models.
-    
+
     - Cost: FREE (runs on your machine)
     - Models: deepseek-coder-v2, codellama, qwen2.5-coder, etc.
     - Quality: Good for iteration, not production
-    
+
     Install: https://ollama.ai
     Run: ollama run deepseek-coder-v2:16b
     """
-    
+
     def __init__(
         self,
         model: str = "deepseek-coder-v2:16b",
@@ -195,14 +195,14 @@ class OllamaClient(BaseLLMClient):
         self.model = model
         self.base_url = base_url
         self._client = httpx.AsyncClient(timeout=300)
-    
+
     @property
     def model_name(self) -> str:
         return f"ollama/{self.model}"
-    
+
     async def close(self):
         await self._client.aclose()
-    
+
     async def generate(
         self,
         system_prompt: str,
@@ -226,7 +226,7 @@ class OllamaClient(BaseLLMClient):
             )
             response.raise_for_status()
             return response.json()
-        
+
         data = await _retry_request(_call)
         return LLMResponse(
             content=data.get("response", ""),
@@ -243,14 +243,14 @@ class OllamaClient(BaseLLMClient):
 class OpenAIClient(BaseLLMClient):
     """
     OpenAI API Client.
-    
+
     - Models: gpt-4o, gpt-4o-mini
     - Cost: ~$2.50/1M input (4o-mini), ~$5/1M (4o)
     - Quality: Excellent
-    
+
     Get API key: https://platform.openai.com/
     """
-    
+
     def __init__(
         self,
         api_key: Optional[str] = None,
@@ -260,18 +260,18 @@ class OpenAIClient(BaseLLMClient):
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         if not self.api_key:
             raise ValueError("OPENAI_API_KEY not found")
-        
+
         self.model = model
         self.base_url = base_url
         self._client = httpx.AsyncClient(timeout=120)
-    
+
     @property
     def model_name(self) -> str:
         return f"openai/{self.model}"
-    
+
     async def close(self):
         await self._client.aclose()
-    
+
     async def generate(
         self,
         system_prompt: str,
@@ -298,7 +298,7 @@ class OpenAIClient(BaseLLMClient):
             )
             response.raise_for_status()
             return response.json()
-        
+
         data = await _retry_request(_call)
         choice = data["choices"][0]
         return LLMResponse(
@@ -313,14 +313,14 @@ class OpenAIClient(BaseLLMClient):
 class AnthropicClient(BaseLLMClient):
     """
     Anthropic API Client (Claude).
-    
+
     - Models: claude-3-5-sonnet, claude-3-opus
     - Cost: ~$3/1M input (Sonnet), ~$15/1M (Opus)
     - Quality: Best for complex reasoning
-    
+
     Get API key: https://console.anthropic.com/
     """
-    
+
     def __init__(
         self,
         api_key: Optional[str] = None,
@@ -329,17 +329,17 @@ class AnthropicClient(BaseLLMClient):
         self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
         if not self.api_key:
             raise ValueError("ANTHROPIC_API_KEY not found")
-        
+
         self.model = model
         self._client = httpx.AsyncClient(timeout=120)
-    
+
     @property
     def model_name(self) -> str:
         return f"anthropic/{self.model}"
-    
+
     async def close(self):
         await self._client.aclose()
-    
+
     async def generate(
         self,
         system_prompt: str,
@@ -367,7 +367,7 @@ class AnthropicClient(BaseLLMClient):
             )
             response.raise_for_status()
             return response.json()
-        
+
         data = await _retry_request(_call)
         content = data.get("content", [{}])[0].get("text", "")
         return LLMResponse(
@@ -382,14 +382,14 @@ class AnthropicClient(BaseLLMClient):
 class GeminiClient(BaseLLMClient):
     """
     Google Gemini API Client (native SDK).
-    
+
     - Models: gemini-2.5-flash, gemini-2.5-pro, gemini-2.0-flash
     - Cost: FREE tier (15 RPM), paid tier available
     - Quality: Excellent for code generation
-    
+
     Get API key: https://aistudio.google.com/apikey
     """
-    
+
     def __init__(
         self,
         api_key: Optional[str] = None,
@@ -398,13 +398,13 @@ class GeminiClient(BaseLLMClient):
         self.api_key = api_key or os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
         if not self.api_key:
             raise ValueError("GOOGLE_API_KEY or GEMINI_API_KEY not found")
-        
+
         self.model = model
-    
+
     @property
     def model_name(self) -> str:
         return f"google/{self.model}"
-    
+
     async def generate(
         self,
         system_prompt: str,
@@ -421,9 +421,9 @@ class GeminiClient(BaseLLMClient):
                 "Google Gemini SDK not installed. Run: pip install google-genai\n"
                 "Or install MACRO with Gemini support: pip install macro-cli[google]"
             )
-        
+
         client = genai.Client(api_key=self.api_key)
-        
+
         response = client.models.generate_content(
             model=self.model,
             contents=f"{system_prompt}\n\n{user_prompt}",
@@ -432,7 +432,7 @@ class GeminiClient(BaseLLMClient):
                 max_output_tokens=max_tokens,
             ),
         )
-        
+
         # Extract usage info
         usage = {}
         if response.usage_metadata:
@@ -440,7 +440,7 @@ class GeminiClient(BaseLLMClient):
                 "prompt_tokens": response.usage_metadata.prompt_token_count or 0,
                 "completion_tokens": response.usage_metadata.candidates_token_count or 0,
             }
-        
+
         return LLMResponse(
             content=response.text or "",
             model=self.model,
@@ -452,14 +452,14 @@ class GeminiClient(BaseLLMClient):
 class GroqClient(BaseLLMClient):
     """
     Groq API Client.
-    
+
     - Models: llama-3.3-70b-versatile, llama-4-maverick-17b-128e-instruct, etc.
     - Cost: Free tier (30 RPM), paid tier available
     - Quality: Fast inference, good for code
-    
+
     Get API key: https://console.groq.com/
     """
-    
+
     def __init__(
         self,
         api_key: Optional[str] = None,
@@ -469,18 +469,18 @@ class GroqClient(BaseLLMClient):
         self.api_key = api_key or os.getenv("GROQ_API_KEY")
         if not self.api_key:
             raise ValueError("GROQ_API_KEY not found")
-        
+
         self.model = model
         self.base_url = base_url
         self._client = httpx.AsyncClient(timeout=120)
-    
+
     @property
     def model_name(self) -> str:
         return f"groq/{self.model}"
-    
+
     async def close(self):
         await self._client.aclose()
-    
+
     async def generate(
         self,
         system_prompt: str,
@@ -507,7 +507,7 @@ class GroqClient(BaseLLMClient):
             )
             response.raise_for_status()
             return response.json()
-        
+
         data = await _retry_request(_call)
         choice = data["choices"][0]
         return LLMResponse(
@@ -522,18 +522,18 @@ class GroqClient(BaseLLMClient):
 class MockLLMClient(BaseLLMClient):
     """
     Mock LLM Client for testing.
-    
+
     Returns predefined responses without API calls.
     """
-    
+
     def __init__(self, responses: Optional[List[str]] = None):
         self._responses = responses or ["Mock response"]
         self._call_count = 0
-    
+
     @property
     def model_name(self) -> str:
         return "mock/test"
-    
+
     async def generate(
         self,
         system_prompt: str,
@@ -543,7 +543,7 @@ class MockLLMClient(BaseLLMClient):
     ) -> LLMResponse:
         response = self._responses[self._call_count % len(self._responses)]
         self._call_count += 1
-        
+
         return LLMResponse(
             content=response,
             model="mock",
@@ -557,40 +557,40 @@ class MockLLMClient(BaseLLMClient):
 def detect_provider_from_key(api_key: str) -> str:
     """
     Detect LLM provider from an API key's prefix.
-    
+
     API key patterns (as of 2026):
       - Anthropic:  sk-ant-*
       - OpenAI:     sk-proj-* or sk-* (longer, typically 50+ chars)
       - DeepSeek:   sk-* (shorter, typically 32-40 chars)
       - Google:     AIza*
       - Mistral:    starts with alphanumeric, no prefix
-    
+
     This is a best-effort heuristic. Users can always override
     with --provider or CA_LLM_PROVIDER.
     """
     if not api_key or not isinstance(api_key, str):
         return "mock"
-    
+
     key = api_key.strip()
-    
+
     # Anthropic — most distinctive prefix
     if key.startswith("sk-ant-"):
         return "anthropic"
-    
+
     # Google Gemini
     if key.startswith("AIza"):
         return "google"
-    
+
     # Groq
     if key.startswith("gsk_"):
         return "groq"
-    
+
     # OpenAI vs DeepSeek — both use "sk-" prefix
-    # OpenAI keys typically start with "sk-proj-" (project keys) 
+    # OpenAI keys typically start with "sk-proj-" (project keys)
     # or are 51+ characters long
     if key.startswith("sk-proj-"):
         return "openai"
-    
+
     if key.startswith("sk-"):
         # DeepSeek keys are typically shorter (32-50 chars)
         # OpenAI keys are typically longer (51-200+ chars)
@@ -599,7 +599,7 @@ def detect_provider_from_key(api_key: str) -> str:
             return "openai"
         else:
             return "deepseek"
-    
+
     # Unknown prefix — return unknown, let caller decide
     return "unknown"
 
@@ -607,10 +607,10 @@ def detect_provider_from_key(api_key: str) -> str:
 def detect_provider_from_env() -> tuple:
     """
     Auto-detect LLM provider from environment variables.
-    
+
     Checks for known env var names in priority order.
     Returns (provider_name, api_key) tuple.
-    
+
     Priority:
       1. Explicit CA_LLM_PROVIDER (user's choice — always wins)
       2. ANTHROPIC_API_KEY (most distinctive prefix)
@@ -621,7 +621,7 @@ def detect_provider_from_env() -> tuple:
       7. Mock (fallback)
     """
     import os
-    
+
     # If user explicitly set the provider, respect it
     explicit_provider = os.environ.get("CA_LLM_PROVIDER")
     if explicit_provider:
@@ -641,7 +641,7 @@ def detect_provider_from_env() -> tuple:
         if not api_key:
             api_key = os.environ.get("CA_LLM_API_KEY")
         return (explicit_provider, api_key)
-    
+
     # Auto-detect from env var names (most reliable method)
     env_checks = [
         ("ANTHROPIC_API_KEY", "anthropic"),
@@ -651,7 +651,7 @@ def detect_provider_from_env() -> tuple:
         ("GEMINI_API_KEY", "google"),
         ("GROQ_API_KEY", "groq"),
     ]
-    
+
     for env_var, provider in env_checks:
         key = os.environ.get(env_var)
         if key:
@@ -669,7 +669,7 @@ def detect_provider_from_env() -> tuple:
                 )
                 return (detected, key)
             return (provider, key)
-    
+
     # Check if a generic API key was provided
     generic_key = os.environ.get("CA_LLM_API_KEY")
     if generic_key:
@@ -678,7 +678,7 @@ def detect_provider_from_env() -> tuple:
             return (detected, generic_key)
         # Can't determine provider from key alone
         return ("unknown", generic_key)
-    
+
     # Check if Ollama is running locally
     try:
         import httpx
@@ -687,7 +687,7 @@ def detect_provider_from_env() -> tuple:
             return ("ollama", None)
     except Exception:
         pass
-    
+
     return ("mock", None)
 
 
@@ -698,13 +698,13 @@ def create_llm_client(
 ) -> BaseLLMClient:
     """
     Factory function to create an LLM client.
-    
+
     Args:
-        provider: One of 'deepseek', 'ollama', 'openai', 'anthropic', 
+        provider: One of 'deepseek', 'ollama', 'openai', 'anthropic',
                   'google', 'mock', or 'auto' (auto-detect)
         model: Optional model override
         api_key: Optional API key override
-    
+
     Returns:
         BaseLLMClient instance
     """
@@ -716,7 +716,7 @@ def create_llm_client(
         else:
             # Detect from environment variables
             provider, api_key = detect_provider_from_env()
-    
+
     if provider == "unknown":
         raise ValueError(
             "Could not auto-detect LLM provider. Please set one of:\n"
@@ -727,7 +727,7 @@ def create_llm_client(
             "  - CA_LLM_PROVIDER=groq (+ GROQ_API_KEY)\n"
             "  - CA_LLM_PROVIDER=ollama (no key needed)\n"
         )
-    
+
     if provider == "deepseek":
         return DeepSeekClient(
             api_key=api_key,

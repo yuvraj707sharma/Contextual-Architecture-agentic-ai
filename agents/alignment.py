@@ -16,9 +16,9 @@ Two modes:
 
 import re
 from dataclasses import dataclass, field
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List
 
-from .base import BaseAgent, AgentContext, AgentResponse, AgentRole
+from .base import AgentContext, AgentResponse, AgentRole, BaseAgent
 from .logger import get_logger
 
 logger = get_logger("alignment")

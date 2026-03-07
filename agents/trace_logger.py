@@ -20,13 +20,13 @@ from typing import Any, Dict, List, Optional
 
 class TraceLogger:
     """Collects and saves agent traces for distillation."""
-    
+
     def __init__(self):
         self._traces: List[Dict[str, Any]] = []
         self._run_id = f"{int(time.time())}_{os.getpid()}"
         self._start_time = time.perf_counter()
         self._metadata: Dict[str, Any] = {}
-    
+
     def set_metadata(
         self,
         user_request: str,
@@ -47,7 +47,7 @@ class TraceLogger:
             "provider": provider,
             "model": model,
         }
-    
+
     def log_agent(
         self,
         agent: str,
@@ -58,7 +58,7 @@ class TraceLogger:
         attempt: int = 1,
     ):
         """Log a single agent's input/output.
-        
+
         Args:
             agent: Agent name (historian, architect, planner, etc.)
             input_summary: Condensed input (NOT full prompts -- those are huge)
@@ -69,7 +69,7 @@ class TraceLogger:
         """
         # Truncate large data to keep traces manageable
         data = _truncate_data(output_data, max_str_len=2000) if output_data else {}
-        
+
         self._traces.append({
             "agent": agent,
             "attempt": attempt,
@@ -79,7 +79,7 @@ class TraceLogger:
             "output_data": data,
             "elapsed_ms": round((time.perf_counter() - self._start_time) * 1000),
         })
-    
+
     def log_result(
         self,
         success: bool,
@@ -95,25 +95,25 @@ class TraceLogger:
         self._metadata["total_duration_ms"] = round(
             (time.perf_counter() - self._start_time) * 1000
         )
-    
+
     def save(self):
         """Save trace to ~/.contextual-architect/traces/ as JSONL."""
         try:
             traces_dir = Path.home() / ".contextual-architect" / "traces"
             traces_dir.mkdir(parents=True, exist_ok=True)
-            
+
             # One file per day (keeps files manageable)
             date_str = datetime.now().strftime("%Y-%m-%d")
             trace_file = traces_dir / f"{date_str}.jsonl"
-            
+
             record = {
                 **self._metadata,
                 "agent_traces": self._traces,
             }
-            
+
             with open(trace_file, "a", encoding="utf-8") as f:
                 f.write(json.dumps(record, default=str) + "\n")
-            
+
         except Exception:
             pass  # Trace logging should NEVER break the pipeline
 
@@ -122,7 +122,7 @@ def _truncate_data(data: Any, max_str_len: int = 2000, max_depth: int = 3) -> An
     """Recursively truncate large strings in data structures."""
     if max_depth <= 0:
         return "<truncated>"
-    
+
     if isinstance(data, str):
         if len(data) > max_str_len:
             return data[:max_str_len] + f"... ({len(data)} chars total)"

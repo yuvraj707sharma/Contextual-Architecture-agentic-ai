@@ -1,6 +1,7 @@
 """Tests for proactive ClarificationHandler conflict detection."""
 
 import pytest
+
 from agents.clarification_handler import ClarificationHandler, ConflictQuestion
 
 

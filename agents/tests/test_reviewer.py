@@ -5,11 +5,11 @@ Tests for the Reviewer Agent.
 import pytest
 
 from ..reviewer import (
-    ReviewerAgent,
-    ValidationResult,
-    ValidationIssue,
     CheckType,
+    ReviewerAgent,
     Severity,
+    ValidationIssue,
+    ValidationResult,
     validate_code,
 )
 

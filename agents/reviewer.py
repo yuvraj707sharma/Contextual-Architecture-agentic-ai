@@ -17,11 +17,11 @@ import shutil
 import subprocess
 import tempfile
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import List, Dict, Any, Optional
 from enum import Enum
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
-from .base import BaseAgent, AgentContext, AgentResponse, AgentRole
+from .base import AgentContext, AgentResponse, AgentRole, BaseAgent
 from .logger import get_logger
 
 
@@ -51,7 +51,7 @@ class ValidationIssue:
     file_path: str
     line_number: Optional[int] = None
     suggestion: Optional[str] = None
-    
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "check_type": self.check_type.value,
@@ -61,7 +61,7 @@ class ValidationIssue:
             "line_number": self.line_number,
             "suggestion": self.suggestion,
         }
-    
+
     def to_string(self) -> str:
         loc = f":{self.line_number}" if self.line_number else ""
         icon = {"error": "❌", "warning": "⚠️", "info": "ℹ️"}.get(self.severity.value, "•")
@@ -75,15 +75,15 @@ class ValidationResult:
     issues: List[ValidationIssue] = field(default_factory=list)
     checks_run: List[str] = field(default_factory=list)
     summary: str = ""
-    
+
     @property
     def errors(self) -> List[ValidationIssue]:
         return [i for i in self.issues if i.severity == Severity.ERROR]
-    
+
     @property
     def warnings(self) -> List[ValidationIssue]:
         return [i for i in self.issues if i.severity == Severity.WARNING]
-    
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "passed": self.passed,
@@ -93,29 +93,29 @@ class ValidationResult:
             "issues": [i.to_dict() for i in self.issues],
             "summary": self.summary,
         }
-    
+
     def to_prompt_feedback(self) -> str:
         """Generate feedback for the Implementer to fix issues."""
         if self.passed:
             return "✅ All validation checks passed."
-        
+
         lines = ["❌ Validation failed. Please fix these issues:", ""]
-        
+
         for issue in self.errors:
             lines.append(issue.to_string())
             if issue.suggestion:
                 lines.append(f"   Suggestion: {issue.suggestion}")
-        
+
         for issue in self.warnings[:5]:  # Limit warnings
             lines.append(issue.to_string())
-        
+
         return "\n".join(lines)
 
 
 class ReviewerAgent(BaseAgent):
     """
     Agent that validates generated code before it reaches the user.
-    
+
     Runs:
     - Syntax checks (compiles/parses)
     - Type checks (mypy, tsc, go vet)
@@ -123,14 +123,14 @@ class ReviewerAgent(BaseAgent):
     - Security scans (basic pattern matching)
     - Import validation
     """
-    
+
     SYSTEM_PROMPT = None  # Loaded from system_prompts module
-    
+
     @classmethod
     def _load_prompt(cls) -> str:
         from .system_prompts import REVIEWER_SYSTEM_PROMPT
         return REVIEWER_SYSTEM_PROMPT
-    
+
     # Security patterns to flag
     SECURITY_PATTERNS = {
         "python": [
@@ -171,7 +171,7 @@ class ReviewerAgent(BaseAgent):
             (r"malloc\s*\(", "Info: check for NULL return from malloc()"),
         ],
     }
-    
+
     # Tool commands for each language
     VALIDATION_TOOLS = {
         "python": {
@@ -196,21 +196,21 @@ class ReviewerAgent(BaseAgent):
             "syntax": ["gcc", "-fsyntax-only"],
         },
     }
-    
+
     def __init__(self, llm_client=None, use_external_tools: bool = True, tool_timeout: int = 30):
         super().__init__(llm_client)
         self.use_external_tools = use_external_tools
         self.tool_timeout = tool_timeout
         self.logger = get_logger("reviewer")
-    
+
     @property
     def role(self) -> AgentRole:
         return AgentRole.REVIEWER
-    
+
     @property
     def system_prompt(self) -> str:
         return self._load_prompt()
-    
+
     async def process(self, context: AgentContext) -> AgentResponse:
         """
         Process is not the main entry point for Reviewer.
@@ -221,7 +221,7 @@ class ReviewerAgent(BaseAgent):
             data={},
             summary="Use validate() method for code validation",
         )
-    
+
     async def validate(
         self,
         code: str,
@@ -231,51 +231,51 @@ class ReviewerAgent(BaseAgent):
     ) -> ValidationResult:
         """
         Validate a piece of generated code.
-        
+
         Args:
             code: The generated code to validate
             file_path: Where the code will be written
             language: Programming language
             repo_path: Optional path to the repository for context
-        
+
         Returns:
             ValidationResult with all issues found
         """
         result = ValidationResult(passed=True)
-        
+
         # 1. Syntax check (always runs)
         syntax_issues = await self._check_syntax(code, file_path, language)
         result.issues.extend(syntax_issues)
         result.checks_run.append("syntax")
-        
+
         # If syntax fails, other checks are unreliable
         if any(i.severity == Severity.ERROR for i in syntax_issues):
             result.passed = False
             result.summary = f"Syntax errors found ({len(syntax_issues)} issues)"
             return result
-        
+
         # 2. Import validation
         import_issues = self._check_imports(code, language)
         result.issues.extend(import_issues)
         result.checks_run.append("imports")
-        
+
         # 3. Security scan
         security_issues = self._check_security(code, file_path, language)
         result.issues.extend(security_issues)
         result.checks_run.append("security")
-        
+
         # 4. Basic lint checks (without external tools)
         lint_issues = self._basic_lint(code, file_path, language)
         result.issues.extend(lint_issues)
         result.checks_run.append("lint")
-        
+
         # 5. External tools (if available and enabled)
         if self.use_external_tools:
             external_issues = self._run_external_tools(code, file_path, language)
             result.issues.extend(external_issues)
             if external_issues:
                 result.checks_run.append("external_tools")
-        
+
         # 6. Library consistency check
         # If the project uses specific frameworks, verify generated code
         # uses them too (e.g., don't generate print() for a pygame project)
@@ -286,17 +286,17 @@ class ReviewerAgent(BaseAgent):
             result.issues.extend(consistency_issues)
             if consistency_issues:
                 result.checks_run.append("library_consistency")
-        
+
         # Determine overall pass/fail
         error_count = len(result.errors)
         warning_count = len(result.warnings)
-        
+
         result.passed = error_count == 0
         result.summary = (
             f"{'✅ Passed' if result.passed else '❌ Failed'}: "
             f"{error_count} errors, {warning_count} warnings"
         )
-        
+
         return result
 
     def _check_library_consistency(
@@ -308,19 +308,18 @@ class ReviewerAgent(BaseAgent):
     ) -> List[ValidationIssue]:
         """Check that generated code uses the same libraries as the project."""
         issues = []
-        
+
         # Only check for Python for now
         if language != "python":
             return issues
-        
+
         # Detect what frameworks the project uses by scanning imports
-        from pathlib import Path
         project_path = Path(repo_path)
-        
+
         # UI frameworks that should be consistent
         ui_frameworks = {"pygame", "tkinter", "kivy", "pyqt5", "wxpython"}
         web_frameworks = {"flask", "fastapi", "django", "tornado", "aiohttp"}
-        
+
         project_frameworks = set()
         files_checked = 0
         for f in project_path.rglob("*.py"):
@@ -336,15 +335,15 @@ class ReviewerAgent(BaseAgent):
                 files_checked += 1
             except Exception:
                 continue
-        
+
         if not project_frameworks:
             return issues
-        
+
         # Check if generated code uses any of the project's frameworks
-        code_lower = code.lower()
+        code.lower()
         project_ui = project_frameworks & ui_frameworks
-        project_web = project_frameworks & web_frameworks
-        
+        project_frameworks & web_frameworks
+
         # UI framework mismatch check
         if project_ui:
             uses_project_ui = any(
@@ -367,9 +366,9 @@ class ReviewerAgent(BaseAgent):
                     file_path=file_path,
                     suggestion=f"Use {', '.join(project_ui)} for consistency with the project",
                 ))
-        
+
         return issues
-    
+
     async def validate_batch(
         self,
         files: Dict[str, str],
@@ -378,34 +377,34 @@ class ReviewerAgent(BaseAgent):
     ) -> ValidationResult:
         """
         Validate multiple files at once.
-        
+
         Args:
             files: Dict of {file_path: code_content}
             language: Programming language
             repo_path: Optional repository path
-        
+
         Returns:
             Combined ValidationResult
         """
         combined = ValidationResult(passed=True)
-        
+
         for file_path, code in files.items():
             result = await self.validate(code, file_path, language, repo_path)
             combined.issues.extend(result.issues)
             combined.checks_run = list(set(combined.checks_run + result.checks_run))
-            
+
             if not result.passed:
                 combined.passed = False
-        
+
         error_count = len(combined.errors)
         warning_count = len(combined.warnings)
         combined.summary = (
             f"{'✅ Passed' if combined.passed else '❌ Failed'}: "
             f"{len(files)} files, {error_count} errors, {warning_count} warnings"
         )
-        
+
         return combined
-    
+
     async def _check_syntax(
         self,
         code: str,
@@ -414,7 +413,7 @@ class ReviewerAgent(BaseAgent):
     ) -> List[ValidationIssue]:
         """Check code syntax."""
         issues = []
-        
+
         if language == "python":
             issues.extend(self._check_python_syntax(code, file_path))
         elif language == "go":
@@ -423,13 +422,13 @@ class ReviewerAgent(BaseAgent):
             issues.extend(self._check_js_syntax(code, file_path))
         elif language in ("cpp", "c"):
             issues.extend(self._check_c_syntax(code, file_path, language))
-        
+
         return issues
-    
+
     def _check_python_syntax(self, code: str, file_path: str) -> List[ValidationIssue]:
         """Check Python syntax using compile()."""
         issues = []
-        
+
         try:
             compile(code, file_path, 'exec')
         except SyntaxError as e:
@@ -448,13 +447,13 @@ class ReviewerAgent(BaseAgent):
                 message=f"Compilation error: {str(e)}",
                 file_path=file_path,
             ))
-        
+
         return issues
-    
+
     def _check_go_syntax(self, code: str, file_path: str) -> List[ValidationIssue]:
         """Check Go syntax (basic check without go compiler)."""
         issues = []
-        
+
         # Basic checks
         if "package " not in code:
             issues.append(ValidationIssue(
@@ -465,7 +464,7 @@ class ReviewerAgent(BaseAgent):
                 line_number=1,
                 suggestion="Add 'package main' or appropriate package name",
             ))
-        
+
         # Check for unbalanced braces
         open_braces = code.count('{')
         close_braces = code.count('}')
@@ -477,13 +476,13 @@ class ReviewerAgent(BaseAgent):
                 file_path=file_path,
                 suggestion="Check for missing or extra braces",
             ))
-        
+
         return issues
-    
+
     def _check_js_syntax(self, code: str, file_path: str) -> List[ValidationIssue]:
         """Check JavaScript/TypeScript syntax (basic)."""
         issues = []
-        
+
         # Check for unbalanced braces
         open_braces = code.count('{')
         close_braces = code.count('}')
@@ -494,7 +493,7 @@ class ReviewerAgent(BaseAgent):
                 message=f"Unbalanced braces: {open_braces} opening, {close_braces} closing",
                 file_path=file_path,
             ))
-        
+
         # Check for unbalanced parentheses
         open_parens = code.count('(')
         close_parens = code.count(')')
@@ -505,13 +504,13 @@ class ReviewerAgent(BaseAgent):
                 message=f"Unbalanced parentheses: {open_parens} opening, {close_parens} closing",
                 file_path=file_path,
             ))
-        
+
         return issues
-    
+
     def _check_c_syntax(self, code: str, file_path: str, language: str) -> List[ValidationIssue]:
         """Check C/C++ syntax (basic checks)."""
         issues = []
-        
+
         # Check for unbalanced braces
         open_braces = code.count('{')
         close_braces = code.count('}')
@@ -523,7 +522,7 @@ class ReviewerAgent(BaseAgent):
                 file_path=file_path,
                 suggestion="Check for missing or extra braces",
             ))
-        
+
         # Check for unbalanced parentheses
         open_parens = code.count('(')
         close_parens = code.count(')')
@@ -534,18 +533,18 @@ class ReviewerAgent(BaseAgent):
                 message=f"Unbalanced parentheses: {open_parens} opening, {close_parens} closing",
                 file_path=file_path,
             ))
-        
+
         # Check for missing semicolons (common in C/C++)
         lines = code.split('\n')
         for line_num, line in enumerate(lines, 1):
             stripped = line.strip()
             # Skip empty, preprocessor, comments, braces, labels
             if (not stripped or stripped.startswith('#') or stripped.startswith('//')
-                or stripped.startswith('/*') or stripped.endswith('*/') 
+                or stripped.startswith('/*') or stripped.endswith('*/')
                 or stripped.endswith('{') or stripped.endswith('}')
                 or stripped.endswith(':') or stripped.startswith('*')):
                 continue
-        
+
         # Check for #include in C/C++
         if '#include' not in code and not file_path.endswith('.h') and not file_path.endswith('.hpp'):
             issues.append(ValidationIssue(
@@ -554,20 +553,20 @@ class ReviewerAgent(BaseAgent):
                 message="No #include directives found - consider including necessary headers",
                 file_path=file_path,
             ))
-        
+
         return issues
-    
+
     def _check_imports(self, code: str, language: str) -> List[ValidationIssue]:
         """Check if imports look valid."""
         issues = []
-        
+
         if language == "python":
             # Check for common typos in imports
             common_modules = {
                 "os", "sys", "re", "json", "typing", "pathlib",
                 "dataclasses", "asyncio", "datetime", "collections",
             }
-            
+
             import_pattern = r'^(?:from|import)\s+(\w+)'
             for match in re.finditer(import_pattern, code, re.MULTILINE):
                 module = match.group(1)
@@ -575,7 +574,7 @@ class ReviewerAgent(BaseAgent):
                 if module not in common_modules and not module.startswith('_'):
                     # This is just a heuristic - not a real error
                     pass
-        
+
         elif language == "go":
             # Check for import without usage (basic)
             import_section = re.search(r'import\s*\((.*?)\)', code, re.DOTALL)
@@ -592,9 +591,9 @@ class ReviewerAgent(BaseAgent):
                             file_path="",
                             suggestion=f"Remove import if not needed: {imp}",
                         ))
-        
+
         return issues
-    
+
     def _check_security(
         self,
         code: str,
@@ -604,7 +603,7 @@ class ReviewerAgent(BaseAgent):
         """Check for security issues using pattern matching."""
         issues = []
         patterns = self.SECURITY_PATTERNS.get(language, [])
-        
+
         lines = code.split('\n')
         for line_num, line in enumerate(lines, 1):
             for pattern, message in patterns:
@@ -617,9 +616,9 @@ class ReviewerAgent(BaseAgent):
                         file_path=file_path,
                         line_number=line_num,
                     ))
-        
+
         return issues
-    
+
     def _basic_lint(
         self,
         code: str,
@@ -629,7 +628,7 @@ class ReviewerAgent(BaseAgent):
         """Basic linting without external tools."""
         issues = []
         lines = code.split('\n')
-        
+
         for line_num, line in enumerate(lines, 1):
             # Very long lines
             if len(line) > 120:
@@ -640,7 +639,7 @@ class ReviewerAgent(BaseAgent):
                     file_path=file_path,
                     line_number=line_num,
                 ))
-            
+
             # Trailing whitespace
             if line.rstrip() != line and line.strip():
                 issues.append(ValidationIssue(
@@ -650,7 +649,7 @@ class ReviewerAgent(BaseAgent):
                     file_path=file_path,
                     line_number=line_num,
                 ))
-        
+
         # Python-specific
         if language == "python":
             # Check for bare except
@@ -661,7 +660,7 @@ class ReviewerAgent(BaseAgent):
                     message="Bare 'except:' clause - catch specific exceptions",
                     file_path=file_path,
                 ))
-            
+
             # Check for mutable default arguments
             if re.search(r'def\s+\w+\([^)]*=\s*\[\]', code):
                 issues.append(ValidationIssue(
@@ -670,9 +669,9 @@ class ReviewerAgent(BaseAgent):
                     message="Mutable default argument (use None instead)",
                     file_path=file_path,
                 ))
-        
+
         return issues
-    
+
     def _run_external_tools(
         self,
         code: str,
@@ -683,15 +682,15 @@ class ReviewerAgent(BaseAgent):
         tools = self.VALIDATION_TOOLS.get(language, {})
         if not tools:
             return []
-        
+
         all_issues: List[ValidationIssue] = []
-        
+
         for check_name, cmd in tools.items():
             issues = self._run_single_tool(cmd, code, file_path, check_name, language)
             all_issues.extend(issues)
-        
+
         return all_issues
-    
+
     def _run_single_tool(
         self,
         cmd: List[str],
@@ -703,12 +702,12 @@ class ReviewerAgent(BaseAgent):
         """Run a single external tool and parse its output."""
         issues: List[ValidationIssue] = []
         tool_name = cmd[0]
-        
+
         # Check if tool is installed
         if not shutil.which(tool_name):
             self.logger.debug(f"Tool '{tool_name}' not found, skipping {check_name}")
             return []
-        
+
         # Map language to file extension
         ext_map = {
             "python": ".py",
@@ -720,30 +719,30 @@ class ReviewerAgent(BaseAgent):
             "java": ".java",
         }
         ext = ext_map.get(language, ".txt")
-        
+
         # Write code to temp file
         tmp_fd, tmp_path = tempfile.mkstemp(suffix=ext)
         try:
             with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
                 f.write(code)
-            
+
             full_cmd = cmd + [tmp_path]
             self.logger.debug(f"Running: {' '.join(full_cmd)}")
-            
+
             proc = subprocess.run(
                 full_cmd,
                 capture_output=True,
                 text=True,
                 timeout=self.tool_timeout,
             )
-            
+
             # Parse output into issues
             output = proc.stdout + proc.stderr
             if proc.returncode != 0 and output.strip():
                 issues.extend(
                     self._parse_tool_output(output, file_path, check_name)
                 )
-                
+
         except subprocess.TimeoutExpired:
             self.logger.warning(f"{tool_name} timed out after {self.tool_timeout}s")
         except Exception as e:
@@ -753,9 +752,9 @@ class ReviewerAgent(BaseAgent):
                 os.unlink(tmp_path)
             except OSError:
                 pass
-        
+
         return issues
-    
+
     def _parse_tool_output(
         self,
         output: str,
@@ -764,19 +763,19 @@ class ReviewerAgent(BaseAgent):
     ) -> List[ValidationIssue]:
         """Parse output from an external tool into ValidationIssues."""
         issues: List[ValidationIssue] = []
-        
+
         check_type_map = {
             "syntax": CheckType.SYNTAX,
             "type": CheckType.TYPE,
             "lint": CheckType.LINT,
         }
         check_type = check_type_map.get(check_name, CheckType.LINT)
-        
+
         for line in output.strip().splitlines():
             line = line.strip()
             if not line:
                 continue
-            
+
             # Try to extract line number (common format: file:line:col: message)
             line_num = None
             message = line
@@ -784,7 +783,7 @@ class ReviewerAgent(BaseAgent):
             if match:
                 line_num = int(match.group(1))
                 message = match.group(2)
-            
+
             # Determine severity from message content
             if "error" in message.lower():
                 severity = Severity.ERROR
@@ -792,7 +791,7 @@ class ReviewerAgent(BaseAgent):
                 severity = Severity.WARNING
             else:
                 severity = Severity.WARNING
-            
+
             issues.append(ValidationIssue(
                 check_type=check_type,
                 severity=severity,
@@ -800,7 +799,7 @@ class ReviewerAgent(BaseAgent):
                 file_path=file_path,
                 line_number=line_num,
             ))
-        
+
         return issues
 
 

@@ -10,17 +10,17 @@ Covers:
 """
 
 import pytest
-from agents.context_budget import (
-    estimate_tokens,
-    truncate_to_tokens,
-    ContextBudget,
-    BudgetReport,
-    AttemptRecord,
-    compress_retry_errors,
-    score_complexity,
-    WORD_TO_TOKEN_MULTIPLIER,
-)
 
+from agents.context_budget import (
+    WORD_TO_TOKEN_MULTIPLIER,
+    AttemptRecord,
+    BudgetReport,
+    ContextBudget,
+    compress_retry_errors,
+    estimate_tokens,
+    score_complexity,
+    truncate_to_tokens,
+)
 
 # ── Token Estimation ─────────────────────────────────────
 

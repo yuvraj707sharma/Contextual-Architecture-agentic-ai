@@ -15,10 +15,10 @@ permission model:
 
 Usage:
     executor = ShellExecutor("./my-project")
-    
+
     # Auto-detect what needs to run after writing files
     suggestions = executor.suggest_post_write(written_files, language)
-    
+
     # Run with permission check
     for suggestion in suggestions:
         result = executor.run(suggestion.command, auto_approve=suggestion.safe)
@@ -31,10 +31,10 @@ import re
 import shlex
 import subprocess
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Set
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +64,7 @@ SAFE_COMMANDS: Dict[str, Set[str]] = {
     "prettier": {"--check"},
     "tsc": {"--noEmit"},
     "golangci-lint": {"run"},
-    
+
     # Test runners
     "pytest": set(),
     "python": {"-m"},  # python -m pytest, python -m mypy, etc.
@@ -72,7 +72,7 @@ SAFE_COMMANDS: Dict[str, Set[str]] = {
     "npm": {"test"},
     "npx": {"jest", "vitest", "mocha"},
     "cargo": {"test", "check", "clippy"},
-    
+
     # Info commands
     "git": {"status", "diff", "log", "branch", "show"},
     "ls": set(),
@@ -97,16 +97,16 @@ PERMISSION_COMMANDS: Dict[str, Set[str]] = {
     "cargo": {"build", "add"},
     "poetry": {"install", "add"},
     "pipenv": {"install"},
-    
+
     # Version control (write operations)
     "git": {"add", "commit", "stash", "checkout", "switch"},
-    
+
     # Build tools
     "make": set(),
     "cmake": set(),
     "gradle": {"build"},
     "mvn": {"compile", "package"},
-    
+
     # Database
     "python": {"manage.py"},  # Django management commands
 }
@@ -118,33 +118,33 @@ BLOCKED_PATTERNS: List[str] = [
     r"del\s+/[sq]",
     r"rmdir\s+/s",
     r"format\s+[a-zA-Z]:",
-    
+
     # Database destruction
     r"DROP\s+(TABLE|DATABASE|SCHEMA)",
     r"DELETE\s+FROM\s+\w+\s*;?\s*$",  # DELETE without WHERE
     r"TRUNCATE\s+TABLE",
-    
+
     # Network piping (code execution from internet)
     r"curl\s+.*\|\s*(sh|bash|python|node)",
     r"wget\s+.*\|\s*(sh|bash|python|node)",
     r"curl.*-o\s+/",
-    
+
     # System-level
     r"sudo\s+",
     r"chmod\s+777",
     r"chown\s+",
     r"mkfs",
     r"dd\s+if=",
-    
+
     # Disable safety
     r"--force",
     r"--no-verify",
     r"-f\s+/",
-    
+
     # Environment manipulation
     r"export\s+.*=.*&&",
     r"set\s+.*=.*&&",
-    
+
     # Shell escapes
     r"eval\s+",
     r"`.*`",
@@ -164,7 +164,7 @@ class CommandResult:
     risk: CommandRisk = CommandRisk.SAFE
     blocked_reason: str = ""
     skipped: bool = False
-    
+
     def to_dict(self) -> dict:
         return {
             "command": self.command,
@@ -177,7 +177,7 @@ class CommandResult:
             "blocked_reason": self.blocked_reason,
             "skipped": self.skipped,
         }
-    
+
     def to_prompt_feedback(self) -> str:
         """Format for injection into LLM context on retry."""
         if self.blocked_reason:
@@ -202,7 +202,7 @@ class CommandSuggestion:
     reason: str
     risk: CommandRisk
     auto_approve: bool = False  # Whether to run without asking
-    
+
     def to_display(self) -> str:
         risk_icons = {
             CommandRisk.SAFE: "✅",
@@ -220,14 +220,14 @@ class CommandSuggestion:
 
 class ShellExecutor:
     """Sandboxed command execution with permission flow.
-    
+
     Matches SafeCodeWriter's safety philosophy:
     - Everything is classified by risk before execution
     - Destructive commands are BLOCKED unconditionally
     - Safe commands auto-run (linters, test runners)
     - Medium-risk commands require user permission
     """
-    
+
     def __init__(
         self,
         cwd: str,
@@ -238,10 +238,10 @@ class ShellExecutor:
         self.timeout = timeout
         self.auto_approve_safe = auto_approve_safe
         self._is_windows = platform.system() == "Windows"
-    
+
     def classify(self, command: str) -> CommandRisk:
         """Classify a command's risk level.
-        
+
         Returns:
             CommandRisk enum value
         """
@@ -249,18 +249,18 @@ class ShellExecutor:
         for pattern in BLOCKED_PATTERNS:
             if re.search(pattern, command, re.IGNORECASE):
                 return CommandRisk.BLOCKED
-        
+
         # Parse command into parts
         parts = self._parse_command(command)
         if not parts:
             return CommandRisk.BLOCKED
-        
+
         base = parts[0].lower()
         # Strip path (e.g., /usr/bin/python → python)
         base = Path(base).stem
-        
+
         subcommand = parts[1].lower() if len(parts) > 1 else ""
-        
+
         # Check safe commands
         if base in SAFE_COMMANDS:
             allowed_subs = SAFE_COMMANDS[base]
@@ -273,7 +273,7 @@ class ShellExecutor:
                 module = parts[2].lower() if len(parts) > 2 else ""
                 if module in ("pytest", "mypy", "ruff", "black", "flake8", "pylint"):
                     return CommandRisk.SAFE
-        
+
         # Check permission commands
         if base in PERMISSION_COMMANDS:
             allowed_subs = PERMISSION_COMMANDS[base]
@@ -284,10 +284,10 @@ class ShellExecutor:
             # git with a write subcommand not in permission list
             if base == "git" and subcommand not in SAFE_COMMANDS.get("git", set()):
                 return CommandRisk.HIGH
-        
+
         # Unknown command → HIGH risk
         return CommandRisk.HIGH
-    
+
     def run(
         self,
         command: str,
@@ -295,17 +295,17 @@ class ShellExecutor:
         env_override: Optional[Dict[str, str]] = None,
     ) -> CommandResult:
         """Run a command with risk classification and permission check.
-        
+
         Args:
             command: The shell command to run
             auto_approve: Skip permission prompt for medium-risk commands
             env_override: Additional environment variables
-            
+
         Returns:
             CommandResult with output, timing, and status
         """
         risk = self.classify(command)
-        
+
         # BLOCKED: never run
         if risk == CommandRisk.BLOCKED:
             reason = self._get_block_reason(command)
@@ -316,7 +316,7 @@ class ShellExecutor:
                 risk=risk,
                 blocked_reason=reason,
             )
-        
+
         # Permission check
         needs_permission = risk in (CommandRisk.MEDIUM, CommandRisk.HIGH)
         if needs_permission and not auto_approve:
@@ -328,7 +328,7 @@ class ShellExecutor:
                 choice = input("  Run? [Y/n/skip] ").strip().lower()
             except (EOFError, KeyboardInterrupt):
                 choice = "n"
-            
+
             if choice in ("n", "no"):
                 return CommandResult(
                     command=command,
@@ -343,26 +343,26 @@ class ShellExecutor:
                     risk=risk,
                     skipped=True,
                 )
-        
+
         # Execute
         return self._execute(command, risk, env_override)
-    
+
     def run_batch(
         self,
         suggestions: List[CommandSuggestion],
         stop_on_fail: bool = True,
     ) -> List[CommandResult]:
         """Run a batch of suggested commands.
-        
+
         Args:
             suggestions: List of CommandSuggestion from suggest_post_write()
             stop_on_fail: Stop executing if a command fails
-            
+
         Returns:
             List of CommandResult for each command run
         """
         results = []
-        
+
         for suggestion in suggestions:
             if suggestion.risk == CommandRisk.BLOCKED:
                 results.append(CommandResult(
@@ -372,47 +372,47 @@ class ShellExecutor:
                     blocked_reason="Blocked by safety policy",
                 ))
                 continue
-            
+
             result = self.run(
                 suggestion.command,
                 auto_approve=suggestion.auto_approve,
             )
             results.append(result)
-            
+
             if stop_on_fail and not result.success and not result.skipped:
                 logger.warning(
                     f"Batch stopped: {suggestion.command} failed "
                     f"(exit code {result.returncode})"
                 )
                 break
-        
+
         return results
-    
+
     def suggest_post_write(
         self,
         written_files: Dict[str, str],
         language: str = "python",
     ) -> List[CommandSuggestion]:
         """Auto-detect what commands to run after writing files.
-        
+
         Analyzes the written files to suggest:
         - New dependency → pip install / npm install
         - Test file written → pytest / npm test
         - Config changed → relevant restart
         - Linting → always suggest
-        
+
         Args:
             written_files: Dict of {file_path: file_content}
             language: Programming language
-            
+
         Returns:
             List of CommandSuggestion, ordered by priority
         """
         suggestions: List[CommandSuggestion] = []
-        
+
         for file_path, content in written_files.items():
             path = Path(file_path)
-            
+
             # ── New dependency detection ──────────────────────
             if path.name == "requirements.txt":
                 suggestions.append(CommandSuggestion(
@@ -444,7 +444,7 @@ class ShellExecutor:
                     reason="Cargo.toml was modified",
                     risk=CommandRisk.MEDIUM,
                 ))
-            
+
             # ── New import detection (Python) ─────────────────
             if language == "python" and path.suffix == ".py":
                 new_imports = self._detect_new_imports(content)
@@ -457,7 +457,7 @@ class ShellExecutor:
                             reason=f"New import detected: {imp}",
                             risk=CommandRisk.MEDIUM,
                         ))
-            
+
             # ── Test file detection ───────────────────────────
             if self._is_test_file(file_path):
                 if language == "python":
@@ -481,7 +481,7 @@ class ShellExecutor:
                         risk=CommandRisk.SAFE,
                         auto_approve=True,
                     ))
-        
+
         # ── Always suggest linting ────────────────────────────
         if language == "python":
             # Check if ruff is available
@@ -505,7 +505,7 @@ class ShellExecutor:
                 risk=CommandRisk.SAFE,
                 auto_approve=True,
             ))
-        
+
         # Deduplicate by command
         seen = set()
         unique = []
@@ -513,27 +513,27 @@ class ShellExecutor:
             if s.command not in seen:
                 seen.add(s.command)
                 unique.append(s)
-        
+
         return unique
-    
+
     def format_suggestions(
         self, suggestions: List[CommandSuggestion]
     ) -> str:
         """Format suggestions for display to user."""
         if not suggestions:
             return ""
-        
+
         lines = ["\n📋 Suggested commands:"]
         for i, s in enumerate(suggestions, 1):
             lines.append(f"  {i}. {s.to_display()}")
-        
+
         return "\n".join(lines)
-    
+
     def format_results(self, results: List[CommandResult]) -> str:
         """Format execution results for display."""
         if not results:
             return ""
-        
+
         lines = ["\n📊 Execution results:"]
         for r in results:
             if r.blocked_reason:
@@ -555,11 +555,11 @@ class ShellExecutor:
                     err_lines = r.stderr.strip().split("\n")[:3]
                     for el in err_lines:
                         lines.append(f"      {el[:100]}")
-        
+
         return "\n".join(lines)
-    
+
     # ── Internal Methods ─────────────────────────────────────
-    
+
     def _execute(
         self,
         command: str,
@@ -570,12 +570,12 @@ class ShellExecutor:
         env = os.environ.copy()
         if env_override:
             env.update(env_override)
-        
+
         # Security: lock working directory to project
         cwd = self.cwd
-        
+
         start = time.perf_counter()
-        
+
         try:
             # Use shell=True on Windows for built-in commands,
             # shell=False everywhere else for security
@@ -600,9 +600,9 @@ class ShellExecutor:
                     env=env,
                     shell=False,
                 )
-            
+
             duration = int((time.perf_counter() - start) * 1000)
-            
+
             return CommandResult(
                 command=command,
                 success=proc.returncode == 0,
@@ -612,7 +612,7 @@ class ShellExecutor:
                 duration_ms=duration,
                 risk=risk,
             )
-            
+
         except subprocess.TimeoutExpired:
             duration = int((time.perf_counter() - start) * 1000)
             logger.warning(f"Command timed out after {self.timeout}s: {command}")
@@ -643,7 +643,7 @@ class ShellExecutor:
                 duration_ms=0,
                 risk=risk,
             )
-    
+
     def _parse_command(self, command: str) -> List[str]:
         """Parse a command string into parts safely."""
         try:
@@ -653,14 +653,14 @@ class ShellExecutor:
             return shlex.split(command)
         except ValueError:
             return command.split()
-    
+
     def _get_block_reason(self, command: str) -> str:
         """Get a human-readable reason for why a command was blocked."""
         for pattern in BLOCKED_PATTERNS:
             if re.search(pattern, command, re.IGNORECASE):
                 return f"Matches blocked pattern: {pattern}"
         return "Unknown dangerous pattern"
-    
+
     def _is_test_file(self, file_path: str) -> bool:
         """Check if a file is a test file."""
         name = Path(file_path).stem.lower()
@@ -675,7 +675,7 @@ class ShellExecutor:
             "\\tests\\" in file_path or
             "\\test\\" in file_path
         )
-    
+
     def _detect_new_imports(self, content: str) -> List[str]:
         """Detect potentially new third-party imports in Python code."""
         stdlib = {
@@ -691,7 +691,7 @@ class ShellExecutor:
             "traceback", "pdb", "profile", "timeit", "platform",
             "shlex", "signal", "struct", "array", "queue",
         }
-        
+
         third_party = []
         for match in re.finditer(
             r"^(?:from\s+(\w+)|import\s+(\w+))", content, re.MULTILINE
@@ -699,9 +699,9 @@ class ShellExecutor:
             module = match.group(1) or match.group(2)
             if module and module not in stdlib and not module.startswith("_"):
                 third_party.append(module)
-        
+
         return list(set(third_party))
-    
+
     def _import_to_pip(self, import_name: str) -> Optional[str]:
         """Map Python import name to pip package name."""
         # Common mismatches between import and pip names

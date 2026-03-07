@@ -4,11 +4,10 @@ Tests for the Feedback Collector.
 
 import json
 import os
+
 import pytest
-import tempfile
 
 from ..feedback import FeedbackCollector, FeedbackEntry
-
 
 # ── FeedbackEntry ────────────────────────────────────────────
 

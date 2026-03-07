@@ -8,7 +8,6 @@ from ..alignment import AlignmentAgent, AlignmentOutput
 from ..base import AgentContext, AgentRole
 from ..llm_client import MockLLMClient
 
-
 # ── AlignmentOutput ──────────────────────────────────────────
 
 

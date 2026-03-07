@@ -12,8 +12,8 @@ Two modes:
 Wired into the Orchestrator after Discovery and before Planner.
 """
 
-import re
 import logging
+import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 

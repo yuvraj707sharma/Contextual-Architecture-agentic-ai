@@ -14,21 +14,18 @@ Usage:
     reasoning.stop_spinner()
 """
 
-import sys
-import time
-import threading
 import itertools
+import sys
+import threading
+import time
 from dataclasses import dataclass
-from typing import List, Dict, Optional
-
+from typing import Dict, List, Optional
 
 # ── Rich availability check ──────────────────────────────
 
 _HAS_RICH = False
 try:
     from rich.console import Console
-    from rich.spinner import Spinner
-    from rich.live import Live
     _HAS_RICH = True
 except ImportError:
     pass
@@ -73,7 +70,7 @@ class ReasoningStep:
     timestamp: float = 0.0
     detail: str = ""
     duration_ms: float = 0.0
-    
+
     def __post_init__(self):
         if not self.timestamp:
             self.timestamp = time.time()
@@ -81,18 +78,18 @@ class ReasoningStep:
 
 class ReasoningDisplay:
     """Clean, minimal reasoning display — like Claude CLI / Gemini CLI.
-    
+
     Two modes:
     - streaming=True (interactive): prints reasoning as it happens + spinners
     - streaming=False (CLI): collects all, returns in summary
-    
+
     Features:
     - Animated spinner during LLM calls
     - Elapsed time tracking
     - Clean markers instead of heavy emoji
     - Uses Rich if available, falls back to ANSI
     """
-    
+
     def __init__(self, streaming: bool = True, verbose: bool = False):
         self.streaming = streaming
         self.verbose = verbose
@@ -100,55 +97,55 @@ class ReasoningDisplay:
         self._current_agent: str = ""
         self._suppress = False
         self._console = Console(stderr=True) if _HAS_RICH else None
-        
+
         # Spinner state
         self._spinner_thread: Optional[threading.Thread] = None
         self._spinner_stop = threading.Event()
         self._spinner_message = ""
         self._step_start: float = 0.0
-    
+
     def emit(self, agent: str, message: str, detail: str = ""):
         """Emit a reasoning step — clean, minimal output."""
         step = ReasoningStep(agent=agent, message=message, detail=detail)
-        
+
         # Track duration since last step
         now = time.time()
         if self._step_start > 0:
             step.duration_ms = (now - self._step_start) * 1000
         self._step_start = now
-        
+
         self.steps.append(step)
-        
+
         if self._suppress:
             return
-        
+
         if self.streaming:
             self._print_step(step)
-    
+
     def start_spinner(self, message: str = "Thinking..."):
         """Start an animated spinner — shows activity during LLM calls."""
         if self._suppress or not self.streaming:
             return
-        
+
         self._spinner_message = message
         self._spinner_stop.clear()
         self._step_start = time.time()
-        
+
         if _HAS_RICH and self._console:
             self._start_rich_spinner(message)
         else:
             self._start_ansi_spinner(message)
-    
+
     def stop_spinner(self, final_message: str = ""):
         """Stop the spinner and optionally print a completion message."""
         self._spinner_stop.set()
-        
+
         elapsed = time.time() - self._step_start if self._step_start else 0
-        
+
         if self._spinner_thread and self._spinner_thread.is_alive():
             self._spinner_thread.join(timeout=1)
         self._spinner_thread = None
-        
+
         # Clear spinner line
         if self.streaming and not self._suppress:
             try:
@@ -156,11 +153,11 @@ class ReasoningDisplay:
                 sys.stderr.flush()
             except (OSError, ValueError):
                 pass
-            
+
             if final_message:
                 dur = f" ({elapsed:.1f}s)" if elapsed > 0.1 else ""
                 self._print_clean(f"  ✓ {final_message}{dur}", "green")
-    
+
     def _start_rich_spinner(self, message: str):
         """Start spinner using Rich."""
         def _spin():
@@ -174,10 +171,10 @@ class ReasoningDisplay:
                 except (OSError, ValueError):
                     break
                 self._spinner_stop.wait(0.08)
-        
+
         self._spinner_thread = threading.Thread(target=_spin, daemon=True)
         self._spinner_thread.start()
-    
+
     def _start_ansi_spinner(self, message: str):
         """Start spinner using ANSI codes."""
         def _spin():
@@ -191,10 +188,10 @@ class ReasoningDisplay:
                 except (OSError, ValueError):
                     break
                 self._spinner_stop.wait(0.1)
-        
+
         self._spinner_thread = threading.Thread(target=_spin, daemon=True)
         self._spinner_thread.start()
-    
+
     def _print_step(self, step: ReasoningStep):
         """Print a single reasoning step — clean and minimal."""
         try:
@@ -204,58 +201,58 @@ class ReasoningDisplay:
                 self._print_step_ansi(step)
         except (UnicodeEncodeError, OSError):
             pass
-    
+
     def _print_step_rich(self, step: ReasoningStep):
         """Render with Rich — clean, subtle output."""
         style_info = AGENT_STYLES.get(step.agent, DEFAULT_STYLE)
         marker = style_info["marker"]
-        
+
         # New agent → show agent name
         if step.agent != self._current_agent:
             self._current_agent = step.agent
             self._console.print(
                 f"  [{style_info['rich_style']}]{marker} {step.agent.capitalize()}[/{style_info['rich_style']}]",
             )
-        
+
         # Duration tag
         dur = ""
         if step.duration_ms > 100:
             dur = f" [dim]({step.duration_ms/1000:.1f}s)[/dim]"
-        
+
         # Show message with dim styling
         self._console.print(f"  [dim]  {step.message}{dur}[/dim]")
-        
+
         # Verbose detail
         if self.verbose and step.detail:
             for line in step.detail.split("\n"):
                 self._console.print(f"  [dim]    {line}[/dim]")
-    
+
     def _print_step_ansi(self, step: ReasoningStep):
         """Fallback: clean ANSI output."""
         is_tty = hasattr(sys.stdout, 'isatty') and sys.stdout.isatty()
         dim = _ANSI["dim"] if is_tty else ""
         reset = _ANSI["reset"] if is_tty else ""
-        
+
         style_info = AGENT_STYLES.get(step.agent, DEFAULT_STYLE)
         color = _ANSI.get(style_info["color"], "") if is_tty else ""
         marker = style_info["marker"]
-        
+
         if step.agent != self._current_agent:
             self._current_agent = step.agent
             print(f"  {color}{marker} {step.agent.capitalize()}{reset}")
-        
+
         dur = ""
         if step.duration_ms > 100:
             dur = f" ({step.duration_ms/1000:.1f}s)"
-        
+
         print(f"  {dim}  {step.message}{dur}{reset}")
-        
+
         if self.verbose and step.detail:
             for line in step.detail.split("\n"):
                 print(f"  {dim}    {line}{reset}")
-        
+
         sys.stdout.flush()
-    
+
     def _print_clean(self, text: str, color: str = "white"):
         """Print a clean line with optional color."""
         try:
@@ -268,44 +265,44 @@ class ReasoningDisplay:
                 print(f"{c}{text}{r}")
         except (UnicodeEncodeError, OSError):
             print(text)
-    
+
     def suppress(self):
         """Temporarily suppress output (for non-interactive runs)."""
         self._suppress = True
-    
+
     def unsuppress(self):
         """Resume output."""
         self._suppress = False
-    
+
     def get_summary(self) -> str:
         """Get a formatted summary of all reasoning steps."""
         if not self.steps:
             return ""
-        
+
         lines = ["Agent Reasoning:"]
         current_agent = ""
-        
+
         for step in self.steps:
             if step.agent != current_agent:
                 current_agent = step.agent
                 style = AGENT_STYLES.get(step.agent, DEFAULT_STYLE)
                 lines.append(f"  {style['marker']} {current_agent.capitalize()}")
-            
+
             dur = ""
             if step.duration_ms > 100:
                 dur = f" ({step.duration_ms/1000:.1f}s)"
             lines.append(f"    {step.message}{dur}")
-            
+
             if self.verbose and step.detail:
                 for detail_line in step.detail.split("\n"):
                     lines.append(f"      {detail_line}")
-        
+
         return "\n".join(lines)
-    
+
     def get_steps_for_agent(self, agent: str) -> List[ReasoningStep]:
         """Get all reasoning steps for a specific agent."""
         return [s for s in self.steps if s.agent == agent]
-    
+
     def to_trace_data(self) -> List[Dict]:
         """Export reasoning to trace-friendly format (for distillation)."""
         return [
@@ -318,7 +315,7 @@ class ReasoningDisplay:
             }
             for s in self.steps
         ]
-    
+
     def clear(self):
         """Clear all collected steps."""
         self.steps.clear()

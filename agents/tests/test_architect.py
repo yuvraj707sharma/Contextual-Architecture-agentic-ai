@@ -2,11 +2,11 @@
 Tests for the Architect Agent.
 """
 
-import pytest
-from pathlib import Path
 
-from ..base import AgentContext, AgentRole
+import pytest
+
 from ..architect import ArchitectAgent
+from ..base import AgentContext, AgentRole
 
 
 class TestArchitectAgent:

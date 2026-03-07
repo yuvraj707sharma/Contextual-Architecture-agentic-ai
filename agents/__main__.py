@@ -9,16 +9,15 @@ Usage:
 
 import argparse
 import asyncio
-import sys
 import os
+import sys
 
-from .orchestrator import Orchestrator, OrchestrationResult
-from .safe_writer import SafeCodeWriter
 from .config import AgentConfig
 from .llm_client import create_llm_client
 from .logger import get_logger
-from .pipeline_report import PipelineReport, generate_report
-from .shell_executor import ShellExecutor, CommandRisk
+from .orchestrator import OrchestrationResult, Orchestrator
+from .safe_writer import SafeCodeWriter
+from .shell_executor import ShellExecutor
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -183,7 +182,6 @@ def print_result(result: OrchestrationResult, orchestrator: Orchestrator, as_jso
     DIM = "\033[2m"
     GREEN = "\033[32m"
     RED = "\033[31m"
-    CYAN = "\033[36m"
     YELLOW = "\033[33m"
     BOLD = "\033[1m"
     RESET = "\033[0m"
@@ -286,10 +284,10 @@ async def run(args) -> int:
     # Determine provider and API key
     # Priority: CLI args > env vars > config file
     from .llm_client import detect_provider_from_env
-    
+
     # Load saved config as fallback
     saved_config = AgentConfig.load_user_config()
-    
+
     if args.provider:
         provider = args.provider
         detected_key = args.api_key
@@ -300,10 +298,10 @@ async def run(args) -> int:
         if provider == "mock" and saved_config.llm_provider != "mock":
             provider = saved_config.llm_provider
             detected_key = saved_config.llm_api_key
-    
+
     # CLI --api-key flag overrides everything
     api_key = args.api_key or detected_key or saved_config.llm_api_key
-    
+
     # Per-agent providers: CLI args > saved config
     planner_provider = getattr(args, 'planner_provider', None) or saved_config.planner_provider
     planner_api_key = saved_config.planner_api_key
@@ -414,7 +412,7 @@ async def run(args) -> int:
             safe_writer = SafeCodeWriter(repo_path)
             report = safe_writer.apply_changes(result.changeset)
             _print_write_report(report)
-    
+
     # ── POST-WRITE COMMANDS ───────────────────────────────────
     # After files are written, offer to run tests, linting, git push
     post_write = result.context.get("post_write_commands", [])
@@ -427,12 +425,12 @@ async def run(args) -> int:
             print(f"    {i}. {icon} {cmd['command']}{auto_tag}")
             print(f"       \u2514\u2500 {cmd.get('reason', '')}")
         print()
-        
+
         try:
             choice = input("  Run suggested commands? [a]ll / [s]afe-only / [n]one: ").strip().lower()
         except (KeyboardInterrupt, EOFError):
             choice = "n"
-        
+
         if choice in ("a", "all", "y", "yes"):
             executor = ShellExecutor(repo_path)
             for cmd in post_write:
@@ -457,20 +455,20 @@ async def run(args) -> int:
                         print(f"    \u274c {cmd['command']} \u2014 failed (exit {r.returncode})")
         else:
             print("  Skipped post-write commands.")
-    
+
     # ── GIT SUGGESTIONS ───────────────────────────────────────
     commit_msg = result.context.get("commit_message", "")
     git_cmds = result.context.get("git_commands", [])
     if commit_msg and git_cmds:
-        print(f"  \U0001f500 Ready to commit:")
+        print("  \U0001f500 Ready to commit:")
         print(f"    git commit -m \"{commit_msg}\"")
-        print(f"    git push origin HEAD")
+        print("    git push origin HEAD")
         print()
         try:
             choice = input("  Push to git? [y/n]: ").strip().lower()
         except (KeyboardInterrupt, EOFError):
             choice = "n"
-        
+
         if choice in ("y", "yes"):
             executor = ShellExecutor(repo_path)
             # Add files
@@ -478,35 +476,38 @@ async def run(args) -> int:
                 files = [c.file_path for c in result.changeset.changes]
                 if files:
                     r = executor.run(f"git add {' '.join(files[:10])}", auto_approve=True)
-                    print(f"    {'\u2705' if r.success else '\u274c'} git add")
+                    status = "\u2705" if r.success else "\u274c"
+                    print(f"    {status} git add")
             # Commit
             r = executor.run(f'git commit -m "{commit_msg}"', auto_approve=True)
-            print(f"    {'\u2705' if r.success else '\u274c'} git commit")
+            status = "\u2705" if r.success else "\u274c"
+            print(f"    {status} git commit")
             # Push
             r = executor.run("git push origin HEAD", auto_approve=True)
-            print(f"    {'\u2705' if r.success else '\u274c'} git push")
+            status = "\u2705" if r.success else "\u274c"
+            print(f"    {status} git push")
         else:
             print("  Skipped git push.")
-    
+
     return 0 if result.success else 1
 
 
 def _interactive_approval(changeset, repo_path: str):
     """Show proposed changes and get user approval before writing."""
     from .safe_writer import SafeCodeWriter
-    
+
     print()
     print(changeset.to_user_prompt())
-    
+
     safe = changeset.safe_changes
     needs_approval = changeset.permission_required
-    
+
     if safe:
         print(f"  \u2705 {len(safe)} new file(s) — auto-approved (safe)")
     if needs_approval:
         print(f"  \u26a0\ufe0f  {len(needs_approval)} file(s) need your approval")
     print()
-    
+
     # Show each change needing approval
     for i, change in enumerate(needs_approval):
         risk_icons = {"low": "\u26aa", "medium": "\U0001f7e1", "high": "\U0001f7e0", "critical": "\U0001f534"}
@@ -524,7 +525,7 @@ def _interactive_approval(changeset, repo_path: str):
         if len(change.diff_lines) > 8:
             print(f"      ... {len(change.diff_lines) - 8} more lines")
         print()
-    
+
     # Ask for approval
     print("  Options: [a]pprove all | [1,2,3] approve specific | [n]one | [q]uit")
     try:
@@ -532,7 +533,7 @@ def _interactive_approval(changeset, repo_path: str):
     except (KeyboardInterrupt, EOFError):
         print("\n  Cancelled — no files written.")
         return
-    
+
     if choice in ('a', 'y', 'yes', 'all'):
         changeset.approve_all()
     elif choice in ('n', 'no', 'none', 'q', 'quit'):
@@ -549,7 +550,7 @@ def _interactive_approval(changeset, repo_path: str):
         except ValueError:
             print("  Invalid input — no files written.")
             return
-    
+
     # Apply
     safe_writer = SafeCodeWriter(repo_path)
     report = safe_writer.apply_changes(changeset)
@@ -568,7 +569,7 @@ def _print_write_report(report: dict):
     if report.get("skipped") and report["total_skipped"] > 0:
         print(f"  \u23ed\ufe0f  Skipped {report['total_skipped']} file(s)")
     if report.get("errors"):
-        print(f"  \u274c Errors:")
+        print("  \u274c Errors:")
         for e in report["errors"]:
             print(f"     {e}")
     print()

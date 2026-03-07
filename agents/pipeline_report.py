@@ -11,7 +11,7 @@ showing the user:
 
 Usage:
     from agents.pipeline_report import PipelineReport
-    
+
     report = PipelineReport.from_result(orchestration_result, repo_path)
     print(report.render())           # Full dashboard
     print(report.render_summary())   # Just the summary panel
@@ -19,13 +19,10 @@ Usage:
     print(report.render_git())       # Git commit + push suggestions
 """
 
-import hashlib
 import re
-import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-
 
 # ── Box Drawing Characters ───────────────────────────────────
 
@@ -376,7 +373,7 @@ class PipelineReport:
             )
 
         if self.impact_reports:
-            lines.append(f"\n📌 Impact Analysis:")
+            lines.append("\n📌 Impact Analysis:")
             for ir in self.impact_reports[:3]:
                 target = ir.get("target", "?")
                 affected = ir.get("affected_files", [])

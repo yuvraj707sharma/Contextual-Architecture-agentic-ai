@@ -2,8 +2,6 @@
 Tests for the Style Fingerprint analyzer.
 """
 
-import pytest
-from pathlib import Path
 
 from ..style_fingerprint import StyleAnalyzer, StyleFingerprint
 

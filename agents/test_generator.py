@@ -17,9 +17,9 @@ Auto-detects testing framework:
 
 import re
 from dataclasses import dataclass, field
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
 
-from .base import BaseAgent, AgentContext, AgentResponse, AgentRole
+from .base import AgentContext, AgentResponse, AgentRole, BaseAgent
 from .logger import get_logger
 
 logger = get_logger("test_generator")
@@ -281,7 +281,7 @@ class TestGeneratorAgent(BaseAgent):
                     fn = functions[min(i, len(functions) - 1)]
                     lines.append(f"    # TODO: test that {fn}() satisfies: {criterion}")
                     lines.append(f"    # result = {fn}(...)")
-                    lines.append(f"    # assert result is not None")
+                    lines.append("    # assert result is not None")
                 else:
                     lines.append(f"    # TODO: implement test for: {criterion}")
 
@@ -327,9 +327,9 @@ class TestGeneratorAgent(BaseAgent):
                     fn = functions[min(i, len(functions) - 1)]
                     lines.append(f"\t// TODO: test that {fn}() satisfies: {criterion}")
                 else:
-                    lines.append(f"\t// TODO: implement test")
+                    lines.append("\t// TODO: implement test")
 
-                lines.append(f'\tt.Skip("not implemented")')
+                lines.append('\tt.Skip("not implemented")')
                 lines.append("}")
                 lines.append("")
         else:
@@ -358,12 +358,12 @@ class TestGeneratorAgent(BaseAgent):
         lines.append("")
 
         if criteria:
-            lines.append(f"describe('Generated Tests', () => {{")
+            lines.append("describe('Generated Tests', () => {")
             for criterion in criteria:
                 lines.append(f"  it('should {criterion.lower()}', () => {{")
                 lines.append(f"    // TODO: implement test for: {criterion}")
-                lines.append(f"    expect(true).toBe(true); // placeholder")
-                lines.append(f"  }});")
+                lines.append("    expect(true).toBe(true); // placeholder")
+                lines.append("  });")
                 lines.append("")
             lines.append("});")
         else:

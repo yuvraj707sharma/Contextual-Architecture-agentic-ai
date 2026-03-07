@@ -10,7 +10,6 @@ Used by the Orchestrator as a validation gate between pipeline stages.
 import json
 from typing import Any, Dict, List, Optional, Tuple
 
-
 # ── Schema Definitions ──────────────────────────────────────────
 
 HISTORIAN_REQUIRED_KEYS: Dict[str, Any] = {

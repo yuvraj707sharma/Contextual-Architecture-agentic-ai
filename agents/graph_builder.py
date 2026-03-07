@@ -10,13 +10,13 @@ a deterministic call graph and feeds it to LLM planning.
 Usage:
     builder = GraphBuilder("./my-project")
     graph = builder.build()
-    
+
     # Who calls login()?
     graph.callers_of("auth/views.py::login")
-    
+
     # What breaks if I change UserService?
     graph.dependents_of("services/user.py::UserService")
-    
+
     # Full call chain from an endpoint
     graph.call_chain("api/routes.py::handle_request")
 
@@ -32,7 +32,7 @@ import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Set, Tuple
 
 logger = logging.getLogger(__name__)
 

@@ -1,11 +1,9 @@
 """Tests for ReasoningDisplay — both Rich and ANSI modes."""
 
-import time
-import pytest
 from agents.reasoning_display import (
+    AGENT_STYLES,
     ReasoningDisplay,
     ReasoningStep,
-    AGENT_STYLES,
     get_reasoning,
     reset_reasoning,
 )

@@ -4,11 +4,8 @@ Tests for the Orchestrator - full pipeline integration tests.
 
 import pytest
 
-from ..base import AgentContext, AgentRole
-from ..orchestrator import Orchestrator, OrchestrationResult
-from ..llm_client import MockLLMClient
 from ..config import AgentConfig
-from ..logger import PipelineMetrics
+from ..orchestrator import OrchestrationResult, Orchestrator
 
 
 class TestOrchestrationResult:

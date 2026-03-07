@@ -2,16 +2,13 @@
 Tests for the Safe Writer module.
 """
 
-import os
-import pytest
-from pathlib import Path
 
 from ..safe_writer import (
-    SafeCodeWriter,
-    ProposedChange,
     ChangeSet,
     ChangeType,
+    ProposedChange,
     RiskLevel,
+    SafeCodeWriter,
     plan_safe_changes,
 )
 

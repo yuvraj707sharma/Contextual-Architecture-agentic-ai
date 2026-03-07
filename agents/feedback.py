@@ -12,9 +12,8 @@ streaming and analysis.
 import json
 import os
 import time
-from dataclasses import dataclass, field, asdict
-from pathlib import Path
-from typing import List, Dict, Any, Optional
+from dataclasses import asdict, dataclass, field
+from typing import Any, Dict, List, Optional
 
 
 @dataclass

@@ -11,8 +11,7 @@ import logging
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Dict, Optional
-
+from typing import Dict
 
 # ── Coloured formatter for local dev ─────────────────────
 

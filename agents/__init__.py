@@ -29,41 +29,45 @@ Usage:
     python -m agents "Add JWT auth" --repo ./myproject --lang python
 """
 
-from .base import BaseAgent, AgentContext, AgentResponse, AgentRole
-from .planner import PlannerAgent, PlannerOutput
 from .alignment import AlignmentAgent, AlignmentOutput
-from .historian import HistorianAgent
 from .architect import ArchitectAgent
-from .implementer import ImplementerAgent
-from .test_generator import TestGeneratorAgent, TestGeneratorOutput
-from .reviewer import ReviewerAgent, ValidationResult, validate_code
-from .style_fingerprint import StyleAnalyzer, StyleFingerprint
-from .pr_search import PRSearcher, PRSummary
-from .orchestrator import Orchestrator, OrchestrationResult
-from .safe_writer import SafeCodeWriter, ChangeSet, ProposedChange
-from .feedback import FeedbackCollector, FeedbackEntry
-from .output_validator import validate_agent_output, validate_reviewer_verdict
+from .base import AgentContext, AgentResponse, AgentRole, BaseAgent
 from .clarification_handler import ClarificationHandler
+from .config import AgentConfig
+from .feedback import FeedbackCollector, FeedbackEntry
 from .feedback_reader import FeedbackReader
+from .historian import HistorianAgent
+from .implementer import ImplementerAgent
 from .llm_client import (
+    AnthropicClient,
     BaseLLMClient,
     DeepSeekClient,
-    OllamaClient,
-    OpenAIClient,
-    AnthropicClient,
     GeminiClient,
     MockLLMClient,
+    OllamaClient,
+    OpenAIClient,
     create_llm_client,
 )
-from .config import AgentConfig
-from .logger import get_logger, PipelineMetrics
+from .logger import PipelineMetrics, get_logger
+from .orchestrator import OrchestrationResult, Orchestrator
+from .output_validator import validate_agent_output, validate_reviewer_verdict
+from .planner import PlannerAgent, PlannerOutput
+from .plugins import (
+    LLMPlugin,
+    NotifierPlugin,
+    PluginRegistry,
+    ReviewerPlugin,
+    ScannerPlugin,
+    TrackerPlugin,
+    WriterPlugin,
+)
+from .pr_search import PRSearcher, PRSummary
 from .project_scanner import ProjectScanner, ProjectSnapshot
 from .reasoning_display import ReasoningDisplay
-from .plugins import (
-    LLMPlugin, WriterPlugin, ReviewerPlugin,
-    TrackerPlugin, ScannerPlugin, NotifierPlugin,
-    PluginRegistry,
-)
+from .reviewer import ReviewerAgent, ValidationResult, validate_code
+from .safe_writer import ChangeSet, ProposedChange, SafeCodeWriter
+from .style_fingerprint import StyleAnalyzer, StyleFingerprint
+from .test_generator import TestGeneratorAgent, TestGeneratorOutput
 
 __all__ = [
     # Agents

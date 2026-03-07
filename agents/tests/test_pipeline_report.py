@@ -3,22 +3,19 @@ Tests for Pipeline Report — GitHub Actions-style dashboard.
 """
 
 import sys
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
 
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from agents.pipeline_report import (
+    ChangeSummary,
     PipelineReport,
     TestCheck,
-    ChangeSummary,
-    generate_report,
     _box,
+    generate_report,
 )
-
 
 # ── Fixtures ─────────────────────────────────────────────────
 

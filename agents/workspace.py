@@ -13,7 +13,6 @@ Critical features:
 
 import json
 import shutil
-from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -64,7 +63,7 @@ class Workspace:
         """Create workspace directory structure."""
         for subdir in ["discovery", "attempts", "output", "reports"]:
             (self.workspace_path / subdir).mkdir(parents=True, exist_ok=True)
-        
+
         # SECURITY: Auto-create .gitignore to prevent accidental commit (VULN-4)
         gitignore_path = self.workspace_path / ".gitignore"
         if not gitignore_path.exists():

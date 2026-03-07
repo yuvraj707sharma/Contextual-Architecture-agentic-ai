@@ -2,29 +2,26 @@
 Shared test fixtures for the agent test suite.
 """
 
-import os
-import pytest
-import tempfile
-import shutil
-from pathlib import Path
 
-from ..base import AgentContext, AgentRole
-from ..llm_client import MockLLMClient
+import pytest
+
+from ..base import AgentContext
 from ..config import AgentConfig
+from ..llm_client import MockLLMClient
 
 
 @pytest.fixture
 def tmp_repo(tmp_path):
     """
     A temporary repository with sample project files.
-    
+
     Creates a realistic project layout for agents to scan.
     """
     # Create directory structure
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "utils").mkdir()
     (tmp_path / "tests").mkdir()
-    
+
     # Python files with various styles
     (tmp_path / "src" / "main.py").write_text(
         '"""Main entry point."""\n\n'
@@ -37,7 +34,7 @@ def tmp_repo(tmp_path):
         '    run_app()\n',
         encoding="utf-8",
     )
-    
+
     (tmp_path / "src" / "utils" / "__init__.py").write_text("", encoding="utf-8")
     (tmp_path / "src" / "utils" / "helpers.py").write_text(
         '"""Utility helpers."""\n\n'
@@ -53,7 +50,7 @@ def tmp_repo(tmp_path):
         '    return bool(re.match(pattern, email))\n',
         encoding="utf-8",
     )
-    
+
     (tmp_path / "src" / "models.py").write_text(
         '"""Data models."""\n\n'
         'from dataclasses import dataclass\n'
@@ -66,15 +63,15 @@ def tmp_repo(tmp_path):
         '    age: Optional[int] = None\n',
         encoding="utf-8",
     )
-    
+
     (tmp_path / "tests" / "__init__.py").write_text("", encoding="utf-8")
-    
+
     # Config files
     (tmp_path / "requirements.txt").write_text(
         "fastapi>=0.100\nhttpx>=0.24\npydantic>=2.0\n",
         encoding="utf-8",
     )
-    
+
     return tmp_path
 
 

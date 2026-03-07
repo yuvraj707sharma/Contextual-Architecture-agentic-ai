@@ -1,13 +1,10 @@
 """Tests for PR Search module."""
 
 import json
-import tempfile
-from pathlib import Path
 
 import pytest
 
 from agents.pr_search import PRSearcher, PRSummary
-
 
 # ── Fixtures ─────────────────────────────────────────────
 

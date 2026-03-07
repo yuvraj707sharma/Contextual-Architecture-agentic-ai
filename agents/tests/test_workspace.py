@@ -11,9 +11,10 @@ Covers:
 """
 
 import json
+
 import pytest
-from pathlib import Path
-from agents.workspace import Workspace, WORKSPACE_DIR
+
+from agents.workspace import WORKSPACE_DIR, Workspace
 
 
 @pytest.fixture

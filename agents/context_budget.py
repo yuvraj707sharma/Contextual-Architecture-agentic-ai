@@ -16,8 +16,6 @@ Token Counting — Two-Tier Approach:
 
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
-import json
-import logging
 
 from .logger import get_logger
 
@@ -432,7 +430,7 @@ def compress_retry_errors(
         a1, a2 = attempts
 
         # Compress attempt 1 to one-line summary
-        parts.append(f"## Attempt History")
+        parts.append("## Attempt History")
         parts.append(
             f"- Attempt {a1.attempt}: FAILED with {len(a1.errors)} error(s) — "
             f"{_summarize_errors(a1.errors)}"
