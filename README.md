@@ -3,10 +3,10 @@
 <p align="center">An AI coding agent that writes production-grade code by learning your project's conventions, architecture, and evolution.</p>
 
 <p align="center">
-  <a href="#quick-install"><img src="https://img.shields.io/badge/tests-280%20passing-brightgreen" alt="Tests"></a>
+  <a href="#quick-install"><img src="https://img.shields.io/badge/tests-389%20passing-brightgreen" alt="Tests"></a>
   <a href="#"><img src="https://img.shields.io/badge/python-3.10%2B-blue" alt="Python"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-green.svg" alt="License: Apache 2.0"></a>
-  <a href="#"><img src="https://img.shields.io/badge/agents-9%20specialized-orange" alt="Agents"></a>
+  <a href="#"><img src="https://img.shields.io/badge/pipeline-12%20stages-orange" alt="Pipeline"></a>
   <a href="#"><img src="https://img.shields.io/badge/providers-7%20supported-purple" alt="Providers"></a>
 </p>
 
@@ -16,7 +16,8 @@
 
 - **$0 with free APIs**: Use Groq (30 req/min) or Gemini (15 req/min) free tiers. No subscription.
 - **7 LLM providers**: Google Gemini, Groq, OpenAI, Anthropic, DeepSeek, Ollama, Mock. Bring your own key.
-- **9 specialized agents**: Not one prompt — a full pipeline that plans, validates, and reviews before writing.
+- **12-stage pipeline**: Not one prompt — a full pipeline that scans, graphs, plans, validates, reviews, and tests before writing.
+- **Code graph intelligence**: AST-based dependency graph finds callers, affected files, and impact chains — deterministic, not LLM guesses.
 - **Style-aware**: Learns your naming conventions, indentation, logging patterns, and error handling.
 - **Permission-based**: Never writes a file without showing you the diff and asking first.
 - **Proactive conflict detection**: Detects auth/framework/database mismatches before planning.
@@ -98,6 +99,9 @@ print(result.generated_code)
 ```
 User Request
     |
+    |-- Project Scanner ----------------  Detects frameworks, runtime, production env
+    |-- Graph Builder ------------------  AST-based code graph (calls, imports, inheritance)
+    |
     |-- [Parallel Discovery] ----+
     |   |-- Historian             |  Detects conventions, anti-patterns
     |   |-- Architect             |  Maps structure, finds utilities
@@ -105,6 +109,7 @@ User Request
     |   |-- PR Searcher           |  Finds relevant past PRs
     |                             |
     |-- Clarification Handler ----+  Detects auth/framework/DB conflicts
+    |-- Impact Analyzer              Uses code graph to find affected files
     |-- Planner ------------------+  Creates structured plan + acceptance criteria
     |-- Alignment                    Validates plan against user intent
     |                             
@@ -115,6 +120,8 @@ User Request
     |                             
     |-- Test Generator               Auto-generates tests from plan criteria
     |-- Safe Writer                   Shows diff, asks permission, writes files
+    |-- Shell Executor                Suggests + runs tests, lint, installs
+    |-- Pipeline Report               GitHub Actions-style dashboard + git push
 ```
 
 **Key technique**: The plan is written to disk and re-read on every retry, pushing it into the LLM's recent attention window (inspired by [Manus AI](https://manus.im)).
@@ -145,7 +152,7 @@ Auto-detection: Set any `*_API_KEY` env var and MACRO finds the right provider.
 | Security enforcement (CWE) | No | Partial | **Yes** — denylist blocks patterns |
 | Provider agnostic | No | No | **Yes** — 7 providers |
 | Self-hosted / offline | No | No | **Yes** — Ollama support |
-| Multi-agent pipeline | No | No | **Yes** — 9 specialized agents |
+| Multi-agent pipeline | No | No | **Yes** — 12-stage pipeline |
 | Open source | No | No | **Yes** — Apache 2.0 |
 | Cost | $10-500/mo | $20-200/mo | **$0** with free tiers |
 
@@ -174,8 +181,8 @@ python pr_evaluator.py --repo owner/repo --pr 42 --provider groq
 
 ```
 contextual-architect/
-├── agents/                     # Core multi-agent pipeline (26 modules)
-│   ├── orchestrator.py         # Coordinates all agents
+├── agents/                     # Core multi-agent pipeline (30 modules)
+│   ├── orchestrator.py         # Coordinates all 12 stages
 │   ├── historian.py            # Convention detection
 │   ├── architect.py            # Structure mapping
 │   ├── planner.py              # Structured planning
@@ -184,6 +191,10 @@ contextual-architect/
 │   ├── reviewer.py             # Security + linting
 │   ├── test_generator.py       # Test creation
 │   ├── safe_writer.py          # Permission-based file writing
+│   ├── graph_builder.py        # AST-based code relationship graph
+│   ├── impact_analyzer.py      # Graph queries for affected files
+│   ├── shell_executor.py       # Sandboxed command execution
+│   ├── pipeline_report.py      # GitHub Actions-style dashboard
 │   ├── style_fingerprint.py    # Style extraction
 │   ├── project_scanner.py      # Environment + production detection
 │   ├── clarification_handler.py # Proactive conflict detection
@@ -192,7 +203,7 @@ contextual-architect/
 │   ├── setup_wizard.py         # Interactive first-time setup
 │   ├── interactive.py          # Interactive CLI session
 │   ├── trace_logger.py         # Distillation data collection
-│   └── tests/                  # 280 unit tests
+│   └── tests/                  # 389 unit tests
 ├── data_pipeline/              # PR evolution data collection
 ├── rag/                        # RAG layer (ChromaDB + AST chunking)
 ├── storage/                    # SQLite persistence
@@ -202,7 +213,7 @@ contextual-architect/
 
 ## Roadmap
 
-- [x] 9-agent pipeline with parallel discovery
+- [x] 12-stage pipeline with parallel discovery
 - [x] 7 LLM providers with auto-detection
 - [x] RAG layer (ChromaDB + AST chunking)
 - [x] Interactive setup wizard (`macro --setup`)
@@ -211,8 +222,10 @@ contextual-architect/
 - [x] Proactive conflict detection (auth, framework, DB, language)
 - [x] Production environment detection (deployment, Docker, runtime, IaC)
 - [x] Rich reasoning display with per-agent icons
-- [x] 280 tests passing
-- [ ] Shell command execution (npm install, pytest)
+- [x] AST-based code graph + impact analysis
+- [x] Shell executor (sandboxed `pytest`, `pip install`, `npm test`)
+- [x] Pipeline dashboard (GitHub Actions-style CI view + git push)
+- [x] 389 tests passing
 - [ ] PyPI package (`pip install macro-cli`)
 - [ ] VS Code extension
 - [ ] Model distillation (QLoRA from pipeline traces)

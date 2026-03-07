@@ -1,6 +1,8 @@
 # MACRO -- Getting Started Guide
 
-> Multi-Agent Contextual Repository Orchestrator -- AI-powered code generation that understands your project's style, conventions, and structure.
+> Multi-Agent Contextual Repository Orchestrator — AI-powered code generation that understands your project's style, conventions, and structure.
+> 
+> **12-stage pipeline** · **389 tests** · **7 LLM providers** · **$0 with free APIs**
 
 ---
 
@@ -121,7 +123,7 @@ You'll see:
 |----------|------|-------------|
 | "What does this project do?" | Chat | Analyzes your code and answers the question |
 | "Is there any security issue?" | Chat | Reviews your code for vulnerabilities |
-| "Add user authentication" | Build | Runs the full 9-agent pipeline and generates code |
+| "Add user authentication" | Build | Runs the full 12-stage pipeline and generates code |
 | "Add sort to @data.cpp" | Build | Modifies the specified file |
 
 **Interactive Commands:**
@@ -241,26 +243,50 @@ macro -i --repo "C:\project" --lang python --planner-provider google
 
 ## Step 6: Understanding the Output
 
-Every build run produces a result like this:
+Every build run produces a **pipeline dashboard** (like GitHub Actions):
 
 ```
-======================================================================
-  MACRO -- RESULT
-======================================================================
+┌── 🔄 ✅ PIPELINE PASSED in 2340ms ──────────────────────┐
+│ Request: Add JWT authentication to login endpoint        │
+│ Target:  services/auth.py                                │
+│ Complexity: medium                                       │
+└──────────────────────────────────────────────────────────┘
 
-  SUCCESS
-  > Target File:  Movie_ticket_pricing.py
-  > Attempts:     1
+┌── 📊 Summary ───────────────────────────────────────────┐
+│ 📋 What was done:                                        │
+│   📚 Historian: Found existing session-based auth        │
+│   🏗️ Architect: Target: services/auth.py (MODIFY)       │
+│   📝 Planner: Add JWT auth with token refresh            │
+│ 💡 Why these decisions:                                  │
+│   • Matched project style: snake_case naming             │
+│   • Target file: services/auth.py (action: MODIFY)       │
+└──────────────────────────────────────────────────────────┘
 
-  > Agent Summaries:
-     [historian] 2 patterns found. 4 conventions detected.
-     [planner]   3 acceptance criteria defined
-     [reviewer]  Passed: 0 errors, 0 warnings
+┌── 🏗️ CI Checks ────────────────────────────────────────┐
+│ ✅ 5/5 checks passed                                     │
+│   ✅ Syntax Check                                        │
+│   ✅ Lint (ruff/eslint)                                  │
+│   ✅ Security (CWE denylist)                             │
+│   ✅ Code Review                                         │
+│   ✅ pytest tests/ (340ms)                               │
+└──────────────────────────────────────────────────────────┘
 
-  Proposed Changes:
-     CREATE:  new_file.py (auto-approved)
-     MODIFY:  existing.py (needs your OK)
-     BLOCKED: dangerous_change.py (rejected)
+┌── 📦 Repository ────────────────────────────────────────┐
+│ 📁 Project: 45 files, 8 dirs                             │
+│ 🔧 Frameworks: Flask, SQLAlchemy                         │
+│ 🕸️ Code Graph: 150 nodes, 200 edges                     │
+│   80 functions, 15 classes, 55 methods                   │
+│ 📌 Impact Analysis:                                      │
+│   • auth.py::login → 3 file(s) affected                  │
+└──────────────────────────────────────────────────────────┘
+
+┌── 🔀 Git ───────────────────────────────────────────────┐
+│ 💬 Suggested commit message:                             │
+│   git commit -m "feat(auth): add JWT auth"               │
+│ 📤 Git commands:                                         │
+│   $ git add services/auth.py tests/test_auth.py          │
+│   $ git push origin HEAD                                 │
+└──────────────────────────────────────────────────────────┘
 ```
 
 After code generation, MACRO will show proposed changes and ask for approval:
@@ -278,25 +304,49 @@ After code generation, MACRO will show proposed changes and ask for approval:
   Options: [a]pprove all | [1,2,3] approve specific | [n]one
   >
 
-  Written 2 file(s):
+  ✅ Written 2 file(s):
     new_file.py
     existing.py
   1 backup(s) created
 ```
 
-### Change Types
+---
 
-| Symbol | Meaning |
-|--------|---------|
-| `CREATE` | New file -- safe, auto-approved |
-| `MODIFY` | Changes existing file -- needs permission |
-| `BLOCKED` | Dangerous change detected -- won't apply |
-| `NOT MODIFIED` | Existing file preserved as-is |
+## Step 7: Post-Write Flow (Tests, Lint, Git Push)
 
-### Where Are the Files?
+After files are written, MACRO automatically suggests what to run next:
 
-- **Generated code & plan:** `<your-repo>/.contextual-architect/`
-- **Your config:** `~/.contextual-architect/config.json`
+```
+  📋 Suggested next steps:
+    1. ✅ python -m pytest tests/test_auth.py -v (auto-run)
+       └─ Test file written
+    2. ✅ python -m ruff check . (auto-run)
+       └─ Lint new code
+    3. ⚠️ pip install PyJWT
+       └─ New import detected: jwt
+
+  Run suggested commands? [a]ll / [s]afe-only / [n]one: a
+    ✅ pytest tests/test_auth.py -v — passed (340ms)
+    ✅ ruff check . — passed (80ms)
+    ✅ pip install PyJWT — passed (2100ms)
+
+  🔀 Ready to commit:
+    git commit -m "feat(auth): add JWT authentication"
+    git push origin HEAD
+
+  Push to git? [y/n]: y
+    ✅ git add
+    ✅ git commit
+    ✅ git push
+```
+
+**Command risk levels:**
+
+| Risk | Auto-run? | Examples |
+|------|-----------|----------|
+| ✅ SAFE | Yes | `pytest`, `ruff`, `mypy`, `eslint`, `git status` |
+| ⚠️ MEDIUM | Ask first | `pip install`, `npm install`, `git commit` |
+| 🚫 BLOCKED | Never | `rm -rf`, `sudo`, `curl|sh`, `DROP TABLE` |
 
 ---
 
@@ -393,4 +443,4 @@ Severity:   Bad UX (not a crash, but wrong behavior)
 
 ---
 
-*MACRO v0.2.0 — Multi-Agent Contextual Repository Orchestrator*
+*MACRO v0.3.0 — Multi-Agent Contextual Repository Orchestrator*
