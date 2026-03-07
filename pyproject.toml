@@ -7,7 +7,7 @@ name = "macro-cli"
 version = "0.3.0"
 description = "AI coding agent that learns your project's conventions — 12-stage pipeline, 7 LLM providers, $0 with free APIs"
 readme = "README.md"
-license = {text = "Apache-2.0"}
+license = {text = "AGPL-3.0-only"}
 requires-python = ">=3.10"
 authors = [
     {name = "Yuvraj Sharma"},
@@ -16,7 +16,7 @@ keywords = ["ai", "code-generation", "multi-agent", "enterprise", "llm"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: Apache Software License",
+    "License :: OSI Approved :: GNU Affero General Public License v3",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",

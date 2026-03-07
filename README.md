@@ -5,7 +5,7 @@
 <p align="center">
   <a href="#quick-install"><img src="https://img.shields.io/badge/tests-389%20passing-brightgreen" alt="Tests"></a>
   <a href="#"><img src="https://img.shields.io/badge/python-3.10%2B-blue" alt="Python"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-green.svg" alt="License: Apache 2.0"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL%20v3-blue.svg" alt="License: AGPL v3"></a>
   <a href="#"><img src="https://img.shields.io/badge/pipeline-12%20stages-orange" alt="Pipeline"></a>
   <a href="#"><img src="https://img.shields.io/badge/providers-7%20supported-purple" alt="Providers"></a>
 </p>
@@ -222,7 +222,7 @@ contextual-architect/
 - [x] AST-based code graph + impact analysis
 - [x] Shell executor (sandboxed `pytest`, `pip install`, `npm test`)
 - [x] Pipeline dashboard (GitHub Actions-style CI view + git push)
-- [x] 389 tests passing
+- [x] 420 tests passing
 - [ ] PyPI package (`pip install macro-cli`)
 - [ ] VS Code extension
 - [ ] Model distillation (QLoRA from pipeline traces)
@@ -230,8 +230,14 @@ contextual-architect/
 
 ## License
 
-Apache License 2.0 — See [LICENSE](LICENSE)
+AGPL v3 — See [LICENSE](LICENSE). You can read, modify, fork, and use MACRO for personal/educational use. Commercial SaaS use requires sharing modifications.
 
-## Author
+## Support
 
-**Yuvraj Sharma** — B.Tech 2nd Year
+If MACRO saves you time, consider:
+
+- ⭐ **Star this repo** — helps others find the project
+- 🐛 **Report bugs** — every issue makes MACRO better
+- 🔀 **Contribute** — see [CONTRIBUTING.md](CONTRIBUTING.md)
+
+Built by **Yuvraj Sharma** — [Follow on GitHub](https://github.com/yuvraj707sharma) for updates.

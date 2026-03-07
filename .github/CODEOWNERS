@@ -1,0 +1,6 @@
+# Core pipeline — owner must approve all changes
+/agents/ @yuvraj707sharma
+/rag/ @yuvraj707sharma
+/storage/ @yuvraj707sharma
+pyproject.toml @yuvraj707sharma
+.github/ @yuvraj707sharma
