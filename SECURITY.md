@@ -4,7 +4,7 @@
 
 If you discover a security vulnerability in MACRO, please report it responsibly.
 
-**Email**: yuvraj707sharma@gmail.com
+**Email**: nanuuv0007@gmail.com
 
 **Please include**:
 - Description of the vulnerability
