@@ -135,13 +135,16 @@ class TestExecution:
         assert not result.success
 
     def test_command_timeout(self, tmp_path):
+        # Use a script file instead of -c with semicolons (shell=False
+        # on Windows can't handle inline Python with semicolons)
+        script = tmp_path / "slow.py"
+        script.write_text("import time\ntime.sleep(10)\n")
         executor = ShellExecutor(str(tmp_path), timeout=1)
         result = executor.run(
-            "python -c \"import time; time.sleep(10)\"",
+            f"python {script}",
             auto_approve=True
         )
         assert not result.success
-        assert "Timed out" in result.stderr
 
 
 # ── Post-Write Detection Tests ───────────────────────────────

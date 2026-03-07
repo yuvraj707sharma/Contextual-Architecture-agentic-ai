@@ -261,8 +261,8 @@ class AgentConfig:
     def save_to_file(self, path: Optional[str] = None):
         """Save config to JSON for reuse.
 
-        API keys are saved in plaintext but the file is protected
-        with owner-only permissions (chmod 0o600 on Unix).
+        API keys are saved in plaintext but the file is created with
+        owner-only permissions from the start (no TOCTOU race).
         For display/logging, use to_dict() which masks keys.
         """
         if path is None:
@@ -272,24 +272,33 @@ class AgentConfig:
         data = {k: v for k, v in data.items() if v is not None}
 
         Path(path).parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
 
-        # SECURITY: Set file permissions to owner-only (VULN-6)
-        try:
-            if os.name != 'nt':  # Unix/Mac
-                os.chmod(path, 0o600)
-            else:
-                # Windows: no chmod equivalent without win32security
-                import warnings
-                warnings.warn(
-                    f"Config file contains API keys in plaintext: {path}\n"
-                    f"On Windows, ensure only your user account has access to this file.",
-                    UserWarning,
-                    stacklevel=2,
-                )
-        except OSError:
-            pass  # Best effort
+        content = json.dumps(data, indent=2)
+
+        # SECURITY: Create file with restrictive permissions atomically.
+        # os.open() sets the mode at creation time — no TOCTOU window.
+        if os.name != 'nt':  # Unix/Mac
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            try:
+                with os.fdopen(fd, 'w') as f:
+                    f.write(content)
+            except Exception:
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
+                raise
+        else:
+            # Windows: no Unix permissions. Write normally + warn.
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(content)
+            import warnings
+            warnings.warn(
+                f"Config file contains API keys in plaintext: {path}\n"
+                f"On Windows, ensure only your user account has access to this file.",
+                UserWarning,
+                stacklevel=2,
+            )
 
         return path
 
