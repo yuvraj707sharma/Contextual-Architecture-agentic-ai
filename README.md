@@ -142,19 +142,16 @@ Auto-detection: Set any `*_API_KEY` env var and MACRO finds the right provider.
 
 ## What Makes MACRO Different
 
-| Feature | Copilot/Cursor | Claude Code | MACRO |
-|---------|---------------|-------------|-------|
-| Style matching | No | No | **Yes** — learns your conventions |
-| Permission-based writing | No | Yes | **Yes** — 5-tier risk levels, granular approval |
-| Auto-backup before modify | No | No | **Yes** — .ai_backups/ before every change |
-| Conflict detection | No | No | **Yes** — detects auth/framework/DB conflicts |
-| Production env detection | No | Partial | **Yes** — Dockerfile, deployment, runtime |
-| Security enforcement (CWE) | No | Partial | **Yes** — denylist blocks patterns |
-| Provider agnostic | No | No | **Yes** — 7 providers |
-| Self-hosted / offline | No | No | **Yes** — Ollama support |
-| Multi-agent pipeline | No | No | **Yes** — 12-stage pipeline |
-| Open source | No | No | **Yes** — Apache 2.0 |
-| Cost | $10-500/mo | $20-200/mo | **$0** with free tiers |
+| Feature | Copilot/Cursor | Aider/Cline | Claude Code | MACRO |
+|---------|---------------|-------------|-------------|-------|
+| Style matching | File-level context | Basic context | Conversation context | **AST fingerprint** — naming, indentation, logging patterns |
+| Code graph | ✗ | ✗ | ✗ | **Yes** — deterministic AST callers, dependents, impact chains |
+| Conflict detection | ✗ | ✗ | ✗ | **Yes** — auth/framework/DB mismatches caught before planning |
+| Provider flexibility | Locked | Some | Locked | **7 providers** — Gemini, Groq, OpenAI, Anthropic, DeepSeek, Ollama |
+| Cost | $10-500/mo | $0 (BYOK) | $20-200/mo | **$0** with free Groq/Gemini tiers |
+| Fully offline | ✗ | Partial | ✗ | **Yes** — Ollama local models, air-gapped |
+| Pipeline transparency | Black box | Visible | Visible | **12-stage pipeline** with reasoning display |
+| Open source | ✗ | ✅ | ✗ | **✅** Apache 2.0 |
 
 ## Evaluation Results
 
