@@ -666,7 +666,7 @@ class HistorianAgent(BaseAgent):
                     content = (repo_path / "pyproject.toml").read_text(errors='ignore')
                     if "[tool.isort]" in content:
                         return "isort via pyproject.toml"
-                except:
+                except Exception:
                     pass
         
         if language == "typescript":
@@ -676,7 +676,7 @@ class HistorianAgent(BaseAgent):
                     content = (repo_path / "tsconfig.json").read_text(errors='ignore')
                     if '"paths"' in content or '"baseUrl"' in content:
                         return "absolute imports via tsconfig paths"
-                except:
+                except Exception:
                     pass
         
         if language in ("cpp", "c"):
@@ -686,7 +686,7 @@ class HistorianAgent(BaseAgent):
                     content = f.read_text(encoding='utf-8', errors='ignore')
                     if 'using namespace std;' in content:
                         return "using namespace std; (direct cout/cin)"
-                except:
+                except Exception:
                     continue
             return "std:: prefix style"
         

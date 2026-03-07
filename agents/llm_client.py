@@ -10,12 +10,64 @@ Supports:
 - Groq (fast inference, free tier available)
 
 The system can swap LLMs freely - the agents don't care which one is used.
+
+Engineering:
+- Retry with exponential backoff on 429/503/timeout (no external deps)
+- Connection pooling via shared httpx.AsyncClient per client instance
+- google-genai is optional — only imported when GeminiClient is used
 """
 
 import os
+import asyncio
+import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Optional, Dict, Any, List
+
+import httpx
+
+logger = logging.getLogger(__name__)
+
+# ── Retry helper (pure Python, no tenacity needed) ────────
+
+_RETRYABLE_STATUS = {429, 500, 502, 503, 504}
+_MAX_RETRIES = 3
+_BASE_WAIT = 1.0  # seconds
+
+
+async def _retry_request(coro_factory, *, max_retries: int = _MAX_RETRIES):
+    """Retry an async HTTP call with exponential backoff.
+
+    Retries on:
+    - 429 Too Many Requests (rate limit)
+    - 500/502/503/504 (server errors)
+    - httpx.ConnectTimeout / httpx.ReadTimeout
+
+    Why not tenacity? Zero extra dependencies. This is 15 lines.
+    """
+    last_exc = None
+    for attempt in range(max_retries + 1):
+        try:
+            return await coro_factory()
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code not in _RETRYABLE_STATUS:
+                raise  # 400, 401, 403 — don't retry
+            last_exc = exc
+            wait = _BASE_WAIT * (2 ** attempt)
+            logger.warning(
+                "LLM API returned %d, retrying in %.1fs (attempt %d/%d)",
+                exc.response.status_code, wait, attempt + 1, max_retries,
+            )
+            await asyncio.sleep(wait)
+        except (httpx.ConnectTimeout, httpx.ReadTimeout) as exc:
+            last_exc = exc
+            wait = _BASE_WAIT * (2 ** attempt)
+            logger.warning(
+                "LLM API timeout, retrying in %.1fs (attempt %d/%d)",
+                wait, attempt + 1, max_retries,
+            )
+            await asyncio.sleep(wait)
+    raise last_exc
 
 
 @dataclass
@@ -47,6 +99,10 @@ class BaseLLMClient(ABC):
     def model_name(self) -> str:
         """Name of the model being used."""
         pass
+    
+    async def close(self):
+        """Close any underlying connections. Override in subclasses."""
+        pass
 
 
 class DeepSeekClient(BaseLLMClient):
@@ -72,10 +128,14 @@ class DeepSeekClient(BaseLLMClient):
         
         self.model = model
         self.base_url = base_url
+        self._client = httpx.AsyncClient(timeout=120)
     
     @property
     def model_name(self) -> str:
         return f"deepseek/{self.model}"
+    
+    async def close(self):
+        await self._client.aclose()
     
     async def generate(
         self,
@@ -84,10 +144,8 @@ class DeepSeekClient(BaseLLMClient):
         temperature: float = 0.1,
         max_tokens: int = 4096,
     ) -> LLMResponse:
-        import httpx
-        
-        async with httpx.AsyncClient(timeout=120) as client:
-            response = await client.post(
+        async def _call():
+            response = await self._client.post(
                 f"{self.base_url}/chat/completions",
                 headers={
                     "Authorization": f"Bearer {self.api_key}",
@@ -104,8 +162,9 @@ class DeepSeekClient(BaseLLMClient):
                 },
             )
             response.raise_for_status()
-            data = response.json()
+            return response.json()
         
+        data = await _retry_request(_call)
         choice = data["choices"][0]
         return LLMResponse(
             content=choice["message"]["content"],
@@ -135,10 +194,14 @@ class OllamaClient(BaseLLMClient):
     ):
         self.model = model
         self.base_url = base_url
+        self._client = httpx.AsyncClient(timeout=300)
     
     @property
     def model_name(self) -> str:
         return f"ollama/{self.model}"
+    
+    async def close(self):
+        await self._client.aclose()
     
     async def generate(
         self,
@@ -147,10 +210,8 @@ class OllamaClient(BaseLLMClient):
         temperature: float = 0.1,
         max_tokens: int = 4096,
     ) -> LLMResponse:
-        import httpx
-        
-        async with httpx.AsyncClient(timeout=300) as client:
-            response = await client.post(
+        async def _call():
+            response = await self._client.post(
                 f"{self.base_url}/api/generate",
                 json={
                     "model": self.model,
@@ -164,8 +225,9 @@ class OllamaClient(BaseLLMClient):
                 },
             )
             response.raise_for_status()
-            data = response.json()
+            return response.json()
         
+        data = await _retry_request(_call)
         return LLMResponse(
             content=data.get("response", ""),
             model=self.model,
@@ -201,10 +263,14 @@ class OpenAIClient(BaseLLMClient):
         
         self.model = model
         self.base_url = base_url
+        self._client = httpx.AsyncClient(timeout=120)
     
     @property
     def model_name(self) -> str:
         return f"openai/{self.model}"
+    
+    async def close(self):
+        await self._client.aclose()
     
     async def generate(
         self,
@@ -213,10 +279,8 @@ class OpenAIClient(BaseLLMClient):
         temperature: float = 0.1,
         max_tokens: int = 4096,
     ) -> LLMResponse:
-        import httpx
-        
-        async with httpx.AsyncClient(timeout=120) as client:
-            response = await client.post(
+        async def _call():
+            response = await self._client.post(
                 f"{self.base_url}/chat/completions",
                 headers={
                     "Authorization": f"Bearer {self.api_key}",
@@ -233,8 +297,9 @@ class OpenAIClient(BaseLLMClient):
                 },
             )
             response.raise_for_status()
-            data = response.json()
+            return response.json()
         
+        data = await _retry_request(_call)
         choice = data["choices"][0]
         return LLMResponse(
             content=choice["message"]["content"],
@@ -266,10 +331,14 @@ class AnthropicClient(BaseLLMClient):
             raise ValueError("ANTHROPIC_API_KEY not found")
         
         self.model = model
+        self._client = httpx.AsyncClient(timeout=120)
     
     @property
     def model_name(self) -> str:
         return f"anthropic/{self.model}"
+    
+    async def close(self):
+        await self._client.aclose()
     
     async def generate(
         self,
@@ -278,10 +347,8 @@ class AnthropicClient(BaseLLMClient):
         temperature: float = 0.1,
         max_tokens: int = 4096,
     ) -> LLMResponse:
-        import httpx
-        
-        async with httpx.AsyncClient(timeout=120) as client:
-            response = await client.post(
+        async def _call():
+            response = await self._client.post(
                 "https://api.anthropic.com/v1/messages",
                 headers={
                     "x-api-key": self.api_key,
@@ -299,8 +366,9 @@ class AnthropicClient(BaseLLMClient):
                 },
             )
             response.raise_for_status()
-            data = response.json()
+            return response.json()
         
+        data = await _retry_request(_call)
         content = data.get("content", [{}])[0].get("text", "")
         return LLMResponse(
             content=content,
@@ -344,8 +412,15 @@ class GeminiClient(BaseLLMClient):
         temperature: float = 0.1,
         max_tokens: int = 4096,
     ) -> LLMResponse:
-        from google import genai
-        from google.genai import types
+        # google-genai is optional — only imported when actually used
+        try:
+            from google import genai
+            from google.genai import types
+        except ImportError:
+            raise ImportError(
+                "Google Gemini SDK not installed. Run: pip install google-genai\n"
+                "Or install MACRO with Gemini support: pip install macro-cli[google]"
+            )
         
         client = genai.Client(api_key=self.api_key)
         
@@ -397,10 +472,14 @@ class GroqClient(BaseLLMClient):
         
         self.model = model
         self.base_url = base_url
+        self._client = httpx.AsyncClient(timeout=120)
     
     @property
     def model_name(self) -> str:
         return f"groq/{self.model}"
+    
+    async def close(self):
+        await self._client.aclose()
     
     async def generate(
         self,
@@ -409,10 +488,8 @@ class GroqClient(BaseLLMClient):
         temperature: float = 0.1,
         max_tokens: int = 4096,
     ) -> LLMResponse:
-        import httpx
-        
-        async with httpx.AsyncClient(timeout=120) as client:
-            response = await client.post(
+        async def _call():
+            response = await self._client.post(
                 f"{self.base_url}/chat/completions",
                 headers={
                     "Authorization": f"Bearer {self.api_key}",
@@ -429,8 +506,9 @@ class GroqClient(BaseLLMClient):
                 },
             )
             response.raise_for_status()
-            data = response.json()
+            return response.json()
         
+        data = await _retry_request(_call)
         choice = data["choices"][0]
         return LLMResponse(
             content=choice["message"]["content"],

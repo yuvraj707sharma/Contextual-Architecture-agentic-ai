@@ -26,11 +26,13 @@ classifiers = [
 
 dependencies = [
     "httpx>=0.25.0",
-    "google-genai>=1.0.0",
     "rich>=13.0.0",
 ]
 
 [project.optional-dependencies]
+google = [
+    "google-genai>=1.0.0",
+]
 dev = [
     "pytest>=7.0",
     "pytest-asyncio>=0.21",
@@ -45,6 +47,7 @@ anthropic = [
 ]
 all = [
     "httpx>=0.25.0",
+    "google-genai>=1.0.0",
     "PyGithub>=2.0",
     "chromadb>=0.4.0",
     "sentence-transformers>=2.2.0",
