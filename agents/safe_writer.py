@@ -9,9 +9,12 @@ Core Principles:
 2. Existing files: Show diff, ask permission
 3. Never delete or rewrite without explicit approval
 4. Always create backups before modifying
+5. SECURITY: All file paths validated to stay inside project (VULN-5)
+6. SECURITY: Symlinks that escape project boundary are rejected (VULN-7)
 """
 
 import difflib
+import logging
 import os
 import shutil
 from dataclasses import dataclass, field
@@ -19,6 +22,8 @@ from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 
 class ChangeType(Enum):
@@ -265,8 +270,37 @@ class SafeCodeWriter:
     ]
 
     def __init__(self, project_path: str, backup_dir: Optional[str] = None):
-        self.project_path = Path(project_path)
+        self.project_path = Path(project_path).resolve()
         self.backup_dir = Path(backup_dir) if backup_dir else self.project_path / ".ai_backups"
+
+    def _validate_path(self, file_path: str) -> bool:
+        """SECURITY: Ensure file_path resolves inside the project directory.
+
+        Blocks path traversal attacks like '../../../.bashrc' from
+        LLM-generated output. Also rejects symlinks that escape the
+        project boundary.
+        """
+        try:
+            resolved = (self.project_path / file_path).resolve()
+            project_root = self.project_path.resolve()
+
+            # Must be under the project root
+            if not str(resolved).startswith(str(project_root) + os.sep) and resolved != project_root:
+                return False
+
+            # Reject if any component is a symlink pointing outside
+            candidate = self.project_path / file_path
+            for parent in [candidate] + list(candidate.parents):
+                if parent == self.project_path:
+                    break
+                if parent.exists() and parent.is_symlink():
+                    link_target = parent.resolve()
+                    if not str(link_target).startswith(str(project_root)):
+                        return False
+
+            return True
+        except (OSError, ValueError):
+            return False
 
     def plan_changes(
         self,
@@ -290,6 +324,20 @@ class SafeCodeWriter:
         touched_files = set()
 
         for file_path, new_content in generated_files.items():
+            # SECURITY: Block path traversal (VULN-5)
+            if not self._validate_path(file_path):
+                logger.warning("BLOCKED path traversal attempt: %s", file_path)
+                changeset.changes.append(ProposedChange(
+                    file_path=file_path,
+                    change_type=ChangeType.CREATE_FILE,
+                    risk_level=RiskLevel.CRITICAL,
+                    description=f"⛔ BLOCKED: Path escapes project directory: {file_path}",
+                    auto_approved=False,
+                    approved=False,
+                    reason="Path traversal blocked by security guard",
+                ))
+                continue
+
             full_path = self.project_path / file_path
             touched_files.add(file_path)
 
@@ -480,6 +528,11 @@ class SafeCodeWriter:
 
             full_path = self.project_path / change.file_path
 
+            # SECURITY: Re-validate path at write time (defense-in-depth)
+            if not self._validate_path(change.file_path):
+                errors.append(f"{change.file_path}: BLOCKED — path escapes project directory")
+                continue
+
             try:
                 if change.change_type == ChangeType.CREATE_FILE:
                     # Create new file
@@ -490,7 +543,9 @@ class SafeCodeWriter:
                 else:
                     # Modification - backup first
                     if full_path.exists():
-                        backup_name = f"{full_path.name}.{datetime.now().strftime('%Y%m%d_%H%M%S')}.bak"
+                        # SECURITY: Use full relative path to prevent collision (VULN-10)
+                        safe_name = change.file_path.replace("/", "__").replace("\\", "__")
+                        backup_name = f"{safe_name}.{datetime.now().strftime('%Y%m%d_%H%M%S')}.bak"
                         backup_path = self.backup_dir / backup_name
                         shutil.copy2(full_path, backup_path)
                         backed_up.append(str(backup_path))
@@ -557,6 +612,10 @@ class SafeCodeWriter:
             dirs[:] = [d for d in dirs if d not in ignore_dirs]
 
             for fname in filenames:
+                fpath = Path(root) / fname
+                # SECURITY: Skip symlinks (VULN-7)
+                if fpath.is_symlink():
+                    continue
                 if any(fname.endswith(ext) for ext in exts):
                     rel_path = os.path.relpath(
                         os.path.join(root, fname),

@@ -149,6 +149,11 @@ BLOCKED_PATTERNS: List[str] = [
     r"eval\s+",
     r"`.*`",
     r"\$\(.*\)",
+
+    # Windows command chaining (VULN-4)
+    r"\s*&\s*",        # cmd1 & cmd2
+    r"\s*&&\s*",       # cmd1 && cmd2
+    r"\s*\|\|\s*",     # cmd1 || cmd2
 ]
 
 
@@ -577,29 +582,29 @@ class ShellExecutor:
         start = time.perf_counter()
 
         try:
-            # Use shell=True on Windows for built-in commands,
-            # shell=False everywhere else for security
+            # SECURITY: NEVER use shell=True (VULN-4)
+            parts = self._parse_command(command)
+
             if self._is_windows:
-                proc = subprocess.run(
-                    command,
-                    cwd=cwd,
-                    capture_output=True,
-                    text=True,
-                    timeout=self.timeout,
-                    env=env,
-                    shell=True,
-                )
-            else:
-                parts = self._parse_command(command)
-                proc = subprocess.run(
-                    parts,
-                    cwd=cwd,
-                    capture_output=True,
-                    text=True,
-                    timeout=self.timeout,
-                    env=env,
-                    shell=False,
-                )
+                # Windows built-in commands need cmd.exe
+                win_builtins = {
+                    "dir", "type", "echo", "copy", "move", "ren",
+                    "mkdir", "md", "rmdir", "rd", "del", "cls",
+                    "set", "ver", "vol", "path", "cd",
+                }
+                base = Path(parts[0]).stem.lower() if parts else ""
+                if base in win_builtins:
+                    parts = ["cmd", "/c"] + parts
+
+            proc = subprocess.run(
+                parts,
+                cwd=cwd,
+                capture_output=True,
+                text=True,
+                timeout=self.timeout,
+                env=env,
+                shell=False,  # NEVER shell=True
+            )
 
             duration = int((time.perf_counter() - start) * 1000)
 

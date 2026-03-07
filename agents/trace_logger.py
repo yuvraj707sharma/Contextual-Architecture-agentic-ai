@@ -8,14 +8,22 @@ Each line is one complete pipeline run with all agent inputs/outputs.
 This data is used for future model distillation (QLoRA fine-tuning).
 
 The traces are append-only, one JSON object per line.
+
+SECURITY:
+- Rejects symlinked trace directories (VULN-8)
+- Creates trace files with owner-only permissions on Unix (0o600)
+- Trace logging failures never break the pipeline
 """
 
 import json
+import logging
 import os
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 
 class TraceLogger:
@@ -100,7 +108,22 @@ class TraceLogger:
         """Save trace to ~/.contextual-architect/traces/ as JSONL."""
         try:
             traces_dir = Path.home() / ".contextual-architect" / "traces"
+
+            # SECURITY: Reject if traces_dir is a symlink (VULN-8)
+            if traces_dir.exists() and traces_dir.is_symlink():
+                logger.warning(
+                    "BLOCKED: traces directory is a symlink: %s", traces_dir
+                )
+                return
+
             traces_dir.mkdir(parents=True, exist_ok=True)
+
+            # Set directory permissions to owner-only on Unix
+            if os.name != 'nt':
+                try:
+                    os.chmod(str(traces_dir), 0o700)
+                except OSError:
+                    pass
 
             # One file per day (keeps files manageable)
             date_str = datetime.now().strftime("%Y-%m-%d")
@@ -111,8 +134,27 @@ class TraceLogger:
                 "agent_traces": self._traces,
             }
 
-            with open(trace_file, "a", encoding="utf-8") as f:
-                f.write(json.dumps(record, default=str) + "\n")
+            content = json.dumps(record, default=str) + "\n"
+
+            # SECURITY: Create trace file with owner-only permissions
+            if os.name != 'nt':
+                fd = os.open(
+                    str(trace_file),
+                    os.O_WRONLY | os.O_CREAT | os.O_APPEND,
+                    0o600,
+                )
+                try:
+                    with os.fdopen(fd, 'a') as f:
+                        f.write(content)
+                except Exception:
+                    try:
+                        os.close(fd)
+                    except OSError:
+                        pass
+                    raise
+            else:
+                with open(trace_file, "a", encoding="utf-8") as f:
+                    f.write(content)
 
         except Exception:
             pass  # Trace logging should NEVER break the pipeline
