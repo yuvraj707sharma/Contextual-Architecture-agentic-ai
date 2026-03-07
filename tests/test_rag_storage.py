@@ -153,6 +153,7 @@ class TestChromaVectorStore:
 
     @pytest.fixture
     def store(self, tmp_dir):
+        pytest.importorskip("chromadb")
         from rag.vector_store import ChromaVectorStore
 
         return ChromaVectorStore(
@@ -220,6 +221,7 @@ class TestCodeRetriever:
 
     @pytest.fixture
     def retriever(self, tmp_dir):
+        pytest.importorskip("chromadb")
         from rag.vector_store import ChromaVectorStore
         from rag.retriever import CodeRetriever
 
@@ -288,6 +290,7 @@ class TestRepoIndexer:
         shutil.rmtree(d, ignore_errors=True)
 
     def test_index_repo(self, tmp_repo, chroma_dir):
+        pytest.importorskip("chromadb")
         from rag.vector_store import ChromaVectorStore
         from rag.indexer import RepoIndexer
 
@@ -301,6 +304,7 @@ class TestRepoIndexer:
         assert stats["total_chunks"] >= 3
 
     def test_incremental_index(self, tmp_repo, chroma_dir):
+        pytest.importorskip("chromadb")
         from rag.vector_store import ChromaVectorStore
         from rag.indexer import RepoIndexer
 
@@ -316,6 +320,7 @@ class TestRepoIndexer:
         assert stats2["files_indexed"] == 0
 
     def test_force_reindex(self, tmp_repo, chroma_dir):
+        pytest.importorskip("chromadb")
         from rag.vector_store import ChromaVectorStore
         from rag.indexer import RepoIndexer
 
