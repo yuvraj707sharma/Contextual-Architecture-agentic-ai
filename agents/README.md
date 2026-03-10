@@ -45,30 +45,31 @@ User Request
 
 ## Quick Start
 
-### As CLI Tool
 ```bash
-# Install
-pip install -e .
+pip install -e ".[dev]"
 
 # Set API key (pick one)
 export GOOGLE_API_KEY=your_key     # FREE (15 req/min)
 export GROQ_API_KEY=your_key       # FREE (30 req/min)
-export OPENAI_API_KEY=sk-...       # Paid
 
-# Interactive mode
-macro -i --repo ./myproject --lang python
+# Just point at a project — language auto-detected, interactive auto-starts
+python -m agents --repo ./myproject
+
+# Analyze any GitHub repo
+python -m agents --github tiangolo/fastapi
 
 # Single-shot
-macro "Add JWT authentication middleware" --repo ./myproject --lang python
+python -m agents "Add JWT authentication middleware" --repo ./myproject
 
 # Auto-approve all changes
-macro "Add health check" --repo ./myproject --yes
+python -m agents "Add health check" --repo ./myproject --yes
 
 # Dry run (preview without writing)
-macro "Add logging" --repo ./myproject --dry-run
+python -m agents "Add logging" --repo ./myproject --dry-run
 ```
 
 ### As Library
+
 ```python
 import asyncio
 from agents import Orchestrator, AgentConfig
@@ -97,7 +98,7 @@ print(result.target_file)
 | **ClarificationHandler** | Proactive conflict detection (auth/framework/DB mismatches) |
 | **Planner** | Creates structured plan with acceptance criteria using full context |
 | **Alignment** | Validates plan against user intent before implementation |
-| **Implementer** | Generates code using LLM with ALL context from other agents |
+| **Implementer** | Generates code using LLM with ALL context + Senior Engineer persona |
 | **Reviewer** | Validates syntax, security (CWE denylist), imports, lint |
 | **TestGenerator** | Auto-generates tests from plan acceptance criteria |
 | **SafeWriter** | 5-tier risk assessment, diff preview, permission-based file writing with backups |

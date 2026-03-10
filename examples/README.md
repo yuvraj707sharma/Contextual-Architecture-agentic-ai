@@ -3,42 +3,56 @@
 ## 1. Interactive Mode (Recommended)
 
 ```bash
-# Start an interactive session
-macro -i --repo ./your-project --lang python
+# Just point at a project — language auto-detected, interactive auto-starts
+python -m agents --repo ./your-project
+
+# Analyze any GitHub repo
+python -m agents --github tiangolo/fastapi
 
 # Inside the session:
-#   > Add a /health endpoint              (builds code)
-#   > What does @auth.py do?              (asks about code)
-#   > Add JWT auth to @middleware.py      (modifies existing file)
+#   ❯ Add a /health endpoint              (builds code)
+#   ❯ What does @auth.py do?              (asks about code)
+#   ❯ Add JWT auth to @middleware.py      (modifies existing file)
 ```
 
 ## 2. Single-Shot Mode
 
 ```bash
-# Generate a feature
-macro "Add user registration with email validation" --repo ./myapp --lang python
+# Generate a feature (language auto-detected)
+python -m agents "Add user registration with email validation" --repo ./myapp
 
 # Modify existing file
-macro "Add a timeout parameter to @database.py" --repo ./myapp --lang python
+python -m agents "Add a timeout parameter to @database.py" --repo ./myapp
 
 # With pseudocode control
-macro "Add fibonacci ||| 1. Take n 2. Iterative loop 3. Print sequence" --repo . --lang python
+python -m agents "Add fibonacci ||| 1. Take n 2. Iterative loop 3. Print sequence" --repo .
 
 # Dry run (preview only, no file writes)
-macro "Add health check" --repo ./myapp --lang python --dry-run
+python -m agents "Add health check" --repo ./myapp --dry-run
 ```
 
-## 3. Multi-Provider Setup
+## 3. GitHub Repos
+
+```bash
+# Clone and analyze any public repo
+python -m agents --github tiangolo/fastapi
+
+# Private repos (set GITHUB_TOKEN)
+export GITHUB_TOKEN=ghp_xxxx
+python -m agents --github myorg/private-api
+```
+
+## 4. Multi-Provider Setup
 
 ```bash
 # Fast agents (Groq) + smart planner (Gemini)
-macro -i --repo . --provider groq --planner-provider google
+python -m agents --repo . --provider groq --planner-provider google
 
 # Fully offline with Ollama
-macro -i --repo . --provider ollama --model codellama
+python -m agents --repo . --provider ollama --model codellama
 ```
 
-## 4. Python API
+## 5. Python API
 
 ```python
 import asyncio
@@ -64,7 +78,7 @@ async def main():
 asyncio.run(main())
 ```
 
-## 5. Code Graph Queries
+## 6. Code Graph Queries
 
 ```python
 from agents.graph_builder import GraphBuilder

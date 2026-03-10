@@ -1,8 +1,8 @@
-# MACRO -- Getting Started Guide
+# MACRO — Getting Started Guide
 
 > Multi-Agent Contextual Repository Orchestrator — AI-powered code generation that understands your project's style, conventions, and structure.
 > 
-> **12-stage pipeline** · **389 tests** · **7 LLM providers** · **$0 with free APIs**
+> **12-stage pipeline** · **420 tests** · **7 LLM providers** · **$0 with free APIs**
 
 ---
 
@@ -10,55 +10,29 @@
 
 ### 1.1 Get the Project
 
-Download the zip file and extract it. You should have a folder like:
+```bash
+git clone https://github.com/yuvraj707sharma/Contextual-Architecture-agentic-ai.git
+cd Contextual-Architecture-agentic-ai
 ```
-Downloads\Contextual-Architecture-agentic-ai-main\Contextual-Architecture-agentic-ai-main\
-```
-
-> NOTE: GitHub zips create a double-nested folder. Make sure you're inside the INNER folder (the one that contains `requirements.txt`, `agents/`, `README.md`).
 
 ### 1.2 Install Python
 
 Download Python 3.10+ from https://www.python.org/downloads/
 
-> IMPORTANT: Check "Add Python to PATH" during installation.
+> **IMPORTANT**: Check "Add Python to PATH" during installation.
 
 ### 1.3 Install Dependencies
 
-Open Command Prompt (cmd) **inside the project folder** (right-click the folder > "Open in Terminal", or use cd):
+Open Command Prompt (cmd) **inside the project folder**:
 
 ```cmd
 pip install --upgrade pip setuptools wheel
-pip install -r requirements.txt
-pip install -e .
+pip install -e ".[dev]"
 ```
 
-> CAUTION: Common mistakes:
-> - The command is `pip install -r requirements.txt` (with `-r` flag and an **s** in requirement**s**)
-> - Do NOT type `pip install requirements.txt` (missing -r) or `pip install requirement.txt` (missing -r AND missing s)
-> - You must be inside the folder that contains `requirements.txt`. If you get "No such file", type `dir` to check you can see `requirements.txt` in the listing.
+> **WARNING**: If `pip install -e .` fails with a setuptools error, you can skip it and use `python -m agents` instead of `macro`. Just make sure to always run from inside the project folder.
 
-> WARNING: If `pip install -e .` fails with a setuptools error, you can skip it and use `python -m agents` instead of `macro`. Just make sure to always run from inside the project folder.
-
-After `pip install -e .` succeeds, the `macro` command works from **anywhere** on your system.
-
-### 1.4 Run the Setup Wizard
-
-```cmd
-macro --setup
-```
-
-This will:
-- Check your system (Python version, dependencies)
-- Ask which API provider you want (Gemini and Groq are FREE)
-- Test your API key works
-- Optionally configure a second provider for smarter planning
-- Save everything to config
-
-> TIP: If you just want a quick setup without the wizard:
-> ```cmd
-> macro --save-config --provider google --api-key YOUR_KEY_HERE
-> ```
+### 1.4 Set an API Key
 
 **Free API key sources:**
 
@@ -68,17 +42,26 @@ This will:
 | **Groq** (recommended) | 30 req/min | https://console.groq.com |
 | **OpenAI** | Paid only | https://platform.openai.com |
 | **Anthropic** | Paid only | https://console.anthropic.com |
-```
 
-> After this, you never need to set API keys again. They're saved permanently.
-
-### 1.6 Verify It Works
+Set your key:
 
 ```cmd
-macro -i --repo . --lang python
+:: Windows CMD (no quotes around the value!)
+set GROQ_API_KEY=gsk_xxxxxxxxxxxx
+
+:: Or use the interactive setup wizard
+python -m agents --setup
 ```
 
-You should see the MACRO banner with the config section. Type `exit` to quit.
+> After setup, keys are saved permanently. You won't need to set them again.
+
+### 1.5 Verify It Works
+
+```cmd
+python -m agents --repo .
+```
+
+You should see the MACRO banner with the bordered input box. Type `exit` to quit.
 
 ---
 
@@ -86,38 +69,40 @@ You should see the MACRO banner with the config section. Type `exit` to quit.
 
 ### Interactive Mode (Recommended)
 
-Start a chat session pointed at any folder on your PC:
+Just point MACRO at any project folder — language is auto-detected, interactive mode auto-starts:
 
 ```cmd
 :: Python project
-macro -i --repo "C:\path\to\your\project" --lang python
+python -m agents --repo "C:\path\to\your\project"
 
 :: C++ project
-macro -i --repo "C:\DSA\Basic_Mathematics" --lang cpp
+python -m agents --repo "C:\DSA\Basic_Mathematics"
 
-:: Java project
-macro -i --repo "D:\Projects\MyApp" --lang java
+:: Any GitHub repo (clones automatically)
+python -m agents --github tiangolo/fastapi
 ```
 
 You'll see:
 
 ```
-      +-------------+
-      |  MACRO      |  Multi-Agent Contextual Repository Orchestrator
-      +-------------+
+╭──── macro v0.3.0  ·  groq  ·  python ────╮
+│  repo  C:\path\to\your\project            │
+│                                           │
+│  scan → graph → plan → code → review →    │
+│  test → write                             │
+│                                           │
+│  ask   questions about your code          │
+│  build type what you want to build        │
+│  help  show all commands                  │
+╰───────────────────────────────────────────╯
 
-  > Repo:     C:\path\to\your\project
-  > Language: python
-  > Provider: groq
-
-  [?] Chat: Ask questions about your code
-  [+] Build: Type what you want to build
-  [!] Help:  Type help for all commands
-
-  > _
+  your-project                 groq · llama3-70b
+  ╭─────────────────────────────────────────╮
+  │ ❯ _                                    │
+  ╰─────────────────────────────────────────╯
 ```
 
-**Two modes -- auto-detected:**
+**Two modes — auto-detected:**
 
 | You Type | Mode | What Happens |
 |----------|------|-------------|
@@ -141,14 +126,25 @@ You'll see:
 Run one request and exit:
 
 ```cmd
-macro "Add login system" --repo "C:\my\project" --lang python
-macro "Add binary search algorithm" --repo "C:\DSA" --lang cpp
+python -m agents "Add login system" --repo "C:\my\project"
+python -m agents "Add binary search algorithm" --repo "C:\DSA"
 
 :: Auto-approve all changes (skip permission prompts)
-macro "Add login system" --repo "C:\my\project" --lang python --yes
+python -m agents "Add login system" --repo "C:\my\project" --yes
 
 :: Preview without writing files
-macro "Add login system" --repo "C:\my\project" --lang python --dry-run
+python -m agents "Add login system" --repo "C:\my\project" --dry-run
+```
+
+### GitHub Repos
+
+```cmd
+:: Any public repo — clones and caches automatically
+python -m agents --github tiangolo/fastapi
+
+:: Private repos
+set GITHUB_TOKEN=ghp_xxxx
+python -m agents --github myorg/private-api
 ```
 
 ---
@@ -160,9 +156,9 @@ macro "Add login system" --repo "C:\my\project" --lang python --dry-run
 Use `@filename` to tell MACRO which file to modify:
 
 ```
-> Add booking feature to @Movie_ticket_pricing.py
-> Fix the bug in @utils.py
-> What does @Armstrong.cpp do?
+❯ Add booking feature to @Movie_ticket_pricing.py
+❯ Fix the bug in @utils.py
+❯ What does @Armstrong.cpp do?
 ```
 
 This ensures MACRO **modifies your file** instead of creating a new one.
@@ -172,11 +168,11 @@ This ensures MACRO **modifies your file** instead of creating a new one.
 If you don't mention a file, MACRO creates a **new file**:
 
 ```
-> Add sorting algorithm
+❯ Add sorting algorithm
   --> Creates: sorting_algorithm.py (new file)
 
-> Add binary search
-  --> Creates: binary_search.cpp (new file, if --lang cpp)
+❯ Add binary search
+  --> Creates: binary_search.cpp (if project is C++)
 ```
 
 ---
@@ -190,15 +186,15 @@ Pseudocode gives MACRO exact instructions on what logic to write.
 Type your request, then `|||`, then the pseudocode:
 
 ```
-> Add factorial ||| 1. Take n from user 2. Use loop not recursion 3. Handle negative input
-> Add GCD and LCM ||| 1. Take two numbers 2. GCD using Euclidean algorithm 3. LCM = (a*b)/GCD
-> Add sort to @data.cpp ||| use merge sort, not bubble sort
+❯ Add factorial ||| 1. Take n from user 2. Use loop not recursion 3. Handle negative input
+❯ Add GCD and LCM ||| 1. Take two numbers 2. GCD using Euclidean algorithm 3. LCM = (a*b)/GCD
+❯ Add sort to @data.cpp ||| use merge sort, not bubble sort
 ```
 
 ### In Single-Shot Mode (using --pseudocode)
 
 ```cmd
-macro "Add movie booking" --repo "C:\project" --lang python --pseudocode "1. Ask number of tickets 2. Ask seat type 3. Calculate total 4. Print receipt"
+python -m agents "Add movie booking" --repo "C:\project" --pseudocode "1. Ask number of tickets 2. Ask seat type 3. Calculate total 4. Print receipt"
 ```
 
 ### From a File
@@ -216,7 +212,7 @@ Create `my_plan.txt`:
 Then:
 
 ```cmd
-macro "Add booking to @Movie_ticket_pricing.py" --repo "C:\project" --lang python --pseudocode my_plan.txt
+python -m agents "Add booking to @Movie_ticket_pricing.py" --repo "C:\project" --pseudocode my_plan.txt
 ```
 
 ---
@@ -227,7 +223,7 @@ Use different AI models for different tasks:
 
 ```cmd
 :: Gemini plans (smarter), Groq executes (faster)
-macro -i --repo "C:\project" --lang python --planner-provider google
+python -m agents --repo "C:\project" --planner-provider google
 ```
 
 | Agent | Default Provider | What It Does |
@@ -261,130 +257,59 @@ Every build run produces a **pipeline dashboard** (like GitHub Actions):
 │   • Matched project style: snake_case naming             │
 │   • Target file: services/auth.py (action: MODIFY)       │
 └──────────────────────────────────────────────────────────┘
-
-┌── 🏗️ CI Checks ────────────────────────────────────────┐
-│ ✅ 5/5 checks passed                                     │
-│   ✅ Syntax Check                                        │
-│   ✅ Lint (ruff/eslint)                                  │
-│   ✅ Security (CWE denylist)                             │
-│   ✅ Code Review                                         │
-│   ✅ pytest tests/ (340ms)                               │
-└──────────────────────────────────────────────────────────┘
-
-┌── 📦 Repository ────────────────────────────────────────┐
-│ 📁 Project: 45 files, 8 dirs                             │
-│ 🔧 Frameworks: Flask, SQLAlchemy                         │
-│ 🕸️ Code Graph: 150 nodes, 200 edges                     │
-│   80 functions, 15 classes, 55 methods                   │
-│ 📌 Impact Analysis:                                      │
-│   • auth.py::login → 3 file(s) affected                  │
-└──────────────────────────────────────────────────────────┘
-
-┌── 🔀 Git ───────────────────────────────────────────────┐
-│ 💬 Suggested commit message:                             │
-│   git commit -m "feat(auth): add JWT auth"               │
-│ 📤 Git commands:                                         │
-│   $ git add services/auth.py tests/test_auth.py          │
-│   $ git push origin HEAD                                 │
-└──────────────────────────────────────────────────────────┘
 ```
 
-After code generation, MACRO will show proposed changes and ask for approval:
+After code generation, MACRO shows proposed changes in a colored diff panel and asks for approval:
 
 ```
-  ─── Proposed Changes ───
-
-    + new_file.py (new file — auto-approved)
-
-    [1] existing.py (medium risk)
-        Modify: Add authentication import
-        + from auth.middleware import jwt_auth
-        + app.add_middleware(jwt_auth)
-
-  Options: [a]pprove all | [1,2,3] approve specific | [n]one
-  >
-
-  ✅ Written 2 file(s):
-    new_file.py
-    existing.py
-  1 backup(s) created
+╭──── Proposed Changes ─────────────────────╮
+│  ✓ new_file.py (new — auto-ok)            │
+│                                           │
+│  [1] existing.py (medium risk)            │
+│      + from auth.middleware import jwt     │
+│      + app.add_middleware(jwt)             │
+│                                           │
+│  Options: [a]pprove  [1,2,3]  [n]one      │
+╰───────────────────────────────────────────╯
 ```
-
----
-
-## Step 7: Post-Write Flow (Tests, Lint, Git Push)
-
-After files are written, MACRO automatically suggests what to run next:
-
-```
-  📋 Suggested next steps:
-    1. ✅ python -m pytest tests/test_auth.py -v (auto-run)
-       └─ Test file written
-    2. ✅ python -m ruff check . (auto-run)
-       └─ Lint new code
-    3. ⚠️ pip install PyJWT
-       └─ New import detected: jwt
-
-  Run suggested commands? [a]ll / [s]afe-only / [n]one: a
-    ✅ pytest tests/test_auth.py -v — passed (340ms)
-    ✅ ruff check . — passed (80ms)
-    ✅ pip install PyJWT — passed (2100ms)
-
-  🔀 Ready to commit:
-    git commit -m "feat(auth): add JWT authentication"
-    git push origin HEAD
-
-  Push to git? [y/n]: y
-    ✅ git add
-    ✅ git commit
-    ✅ git push
-```
-
-**Command risk levels:**
-
-| Risk | Auto-run? | Examples |
-|------|-----------|----------|
-| ✅ SAFE | Yes | `pytest`, `ruff`, `mypy`, `eslint`, `git status` |
-| ⚠️ MEDIUM | Ask first | `pip install`, `npm install`, `git commit` |
-| 🚫 BLOCKED | Never | `rm -rf`, `sudo`, `curl|sh`, `DROP TABLE` |
 
 ---
 
 ## Quick Reference
 
 ```cmd
-:: Interactive mode (Python)
-macro -i --repo "C:\project" --lang python
+:: Just point at a project (auto-detect + interactive)
+python -m agents --repo "C:\project"
 
-:: Interactive mode (C++)
-macro -i --repo "C:\DSA\Basic_Mathematics" --lang cpp
+:: GitHub repo
+python -m agents --github tiangolo/fastapi
 
 :: Single-shot
-macro "Add feature" --repo "C:\project" --lang python
+python -m agents "Add feature" --repo "C:\project"
 
 :: With pseudocode (CLI)
-macro "Add feature" --repo "C:\project" --lang python --pseudocode "1. Do X 2. Do Y"
+python -m agents "Add feature" --repo "C:\project" --pseudocode "1. Do X 2. Do Y"
 
 :: With pseudocode (interactive)
-:: Inside the > prompt, type:  Add feature ||| 1. Do X 2. Do Y
+:: Inside the ❯ prompt, type:  Add feature ||| 1. Do X 2. Do Y
 
 :: Multi-provider
-macro "Add feature" --repo "C:\project" --lang python --planner-provider google
+python -m agents "Add feature" --repo "C:\project" --planner-provider google
 
 :: Save config
-macro --save-config --provider groq --planner-provider google
+python -m agents --save-config --provider groq --planner-provider google
 
 :: Help
-macro --help
+python -m agents --help
 
 :: Auto-approve all changes
-macro "Add feature" --repo "C:\project" --lang python --yes
+python -m agents "Add feature" --repo "C:\project" --yes
 
 :: Preview without writing
-macro "Add feature" --repo "C:\project" --lang python --dry-run
+python -m agents "Add feature" --repo "C:\project" --dry-run
 ```
 
-### Supported Languages
+### Supported Languages (auto-detected)
 
 `python` | `cpp` | `c` | `go` | `typescript` | `javascript` | `java`
 
@@ -398,48 +323,14 @@ macro "Add feature" --repo "C:\project" --lang python --dry-run
 
 | Problem | Fix |
 |---------|-----|
-| `macro` not recognized | Run `pip install -e .` from the project folder |
-| `No module named agents` | You're not in the project folder. Use `macro` command instead |
-| `GROQ_API_KEY not found` | Run `macro --save-config --provider groq --api-key YOUR_KEY` |
+| `macro` not recognized | Run `pip install -e .` from the project folder, or use `python -m agents` |
+| `No module named agents` | You're not in the project folder. `cd` into it first |
+| `GROQ_API_KEY not found` | Run `python -m agents --save-config --provider groq --api-key YOUR_KEY` |
 | `Repository path does not exist` | Check the `--repo` path is correct |
 | Tool creates new file instead of modifying | Use `@filename` in your request |
 | `BLOCKED: 80% deletion` | The tool protected your file from replacement |
 | Slow response | Groq free tier: 30 req/min. Wait and retry |
 | `UnicodeEncodeError` | Use Windows Terminal instead of cmd, or update to latest version |
-
----
-
-## Testing & Giving Feedback
-
-### What to Test
-
-1. **Chat mode** -- "What does this project do?", "Find bugs in @file.py"
-2. **Build mode** -- "Add a calculator", "Add factorial function"
-3. **File modifications** -- "Add feature to @existing_file.py"
-4. **With pseudocode** -- Use `|||` in interactive or `--pseudocode` in CLI
-5. **Style matching** -- Does C++ output use `cout` (not `std::cout`)? Does Python match naming?
-6. **Code quality** -- Does the output compile/run correctly?
-
-### How to Report Issues
-
-For each test, note:
-
-```
-Command:    macro -i --repo "C:\project" --lang python
-Request:    Add login system
-Expected:   Should create login_system.py
-Actual:     Created feature.py instead
-Severity:   Bad UX (not a crash, but wrong behavior)
-```
-
-### Feedback Categories
-
-| Category | Meaning |
-|----------|---------|
-| Works | Feature works as expected |
-| Bad UX | Works but confusing/wrong behavior |
-| Broken | Crash, error, or security issue |
-| Idea | Feature suggestion or improvement |
 
 ---
 

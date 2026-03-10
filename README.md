@@ -3,7 +3,7 @@
 <p align="center">An AI coding agent that writes production-grade code by learning your project's conventions, architecture, and evolution.</p>
 
 <p align="center">
-  <a href="#quick-install"><img src="https://img.shields.io/badge/tests-389%20passing-brightgreen" alt="Tests"></a>
+  <a href="#quick-install"><img src="https://img.shields.io/badge/tests-420%20passing-brightgreen" alt="Tests"></a>
   <a href="#"><img src="https://img.shields.io/badge/python-3.10%2B-blue" alt="Python"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL%20v3-blue.svg" alt="License: AGPL v3"></a>
   <a href="#"><img src="https://img.shields.io/badge/pipeline-12%20stages-orange" alt="Pipeline"></a>
@@ -17,70 +17,92 @@
 - **$0 with free APIs**: Use Groq (30 req/min) or Gemini (15 req/min) free tiers. No subscription.
 - **7 LLM providers**: Google Gemini, Groq, OpenAI, Anthropic, DeepSeek, Ollama, Mock. Bring your own key.
 - **12-stage pipeline**: Not one prompt — a full pipeline that scans, graphs, plans, validates, reviews, and tests before writing.
+- **Works on any GitHub repo**: `--github owner/repo` clones and analyzes any public or private repository.
+- **Auto-detects language**: No `--lang` flag needed — MACRO scans your files and figures it out.
 - **Code graph intelligence**: AST-based dependency graph finds callers, affected files, and impact chains — deterministic, not LLM guesses.
 - **Style-aware**: Learns your naming conventions, indentation, logging patterns, and error handling.
+- **Senior-level code**: Every agent thinks as a Staff+ Engineer with a Security Specialist persona — CWE denylist, input validation, sad-path handling.
 - **Permission-based**: Never writes a file without showing you the diff and asking first.
-- **Proactive conflict detection**: Detects auth/framework/database mismatches before planning.
-- **Production-aware**: Reads Dockerfile, deployment configs, runtime versions — not node_modules.
-- **Security enforcement**: CWE denylist blocks known vulnerability patterns before they reach your codebase.
 - **Self-hosted**: Runs fully offline with Ollama. Your code never leaves your machine.
-- **Open source**: Apache 2.0 licensed.
+- **Open source**: AGPL v3 licensed.
 
 ## Quick Install
 
 ```bash
 git clone https://github.com/yuvraj707sharma/Contextual-Architecture-agentic-ai.git
-cd contextual-architect
-pip install -r requirements.txt
-pip install -e .
+cd Contextual-Architecture-agentic-ai
+pip install -e ".[dev]"
 ```
 
-### First-Time Setup (Interactive)
+### Set an API key (pick one — Gemini and Groq are free)
 
 ```bash
-macro --setup
+# Linux / macOS
+export GROQ_API_KEY=your_key_here
+
+# Windows CMD
+set GROQ_API_KEY=your_key_here
 ```
 
-The setup wizard will:
-- Check your system (Python version, dependencies)
-- Ask which provider you want (Gemini and Groq are **FREE**)
-- Test your API key
-- Optionally configure a second provider for smarter planning
-- Save everything permanently
-
-### Manual Setup (Alternative)
+Or run the interactive setup wizard:
 
 ```bash
-# Set any one API key
-export GOOGLE_API_KEY="your_key_here"     # or
-export GROQ_API_KEY="your_key_here"       # or
-export OPENAI_API_KEY="your_key_here"
-
-# Save config
-macro --save-config --provider google --api-key YOUR_KEY
+python -m agents --setup
 ```
 
 ## Usage
 
 ```bash
-# Interactive mode (recommended)
-macro -i --repo ./your-project --lang python
+# Just point at a project — language auto-detected, interactive mode auto-starts
+python -m agents --repo ./myproject
+
+# Analyze any GitHub repo
+python -m agents --github tiangolo/fastapi
+
+# Private repos (set GITHUB_TOKEN)
+python -m agents --github myorg/private-api
 
 # Single-shot: generate a feature
-macro "Add JWT authentication middleware" --repo ./myproject --lang python
+python -m agents "Add JWT authentication middleware" --repo ./myproject
 
 # Multi-provider: fast agents + smart planner
-macro -i --repo . --provider groq --planner-provider google
+python -m agents --repo . --provider groq --planner-provider google
 
-# See all options
-macro --help
-
-# Auto-approve all changes (like --yolo in Gemini CLI)
-macro "Add JWT auth" --repo ./myproject --yes
+# Auto-approve all changes
+python -m agents "Add JWT auth" --repo ./myproject --yes
 
 # Dry run — preview without writing
-macro "Add health check" --repo ./myproject --dry-run
+python -m agents "Add health check" --repo ./myproject --dry-run
+
+# See all options
+python -m agents --help
 ```
+
+### Inside Interactive Mode
+
+```
+╭──── macro v0.3.0  ·  groq  ·  python ────╮
+│  repo  ./myproject                        │
+│                                           │
+│  scan → graph → plan → code → review →    │
+│  test → write                             │
+│                                           │
+│  ask   questions about your code          │
+│  build type what you want to build        │
+│  help  show all commands                  │
+╰───────────────────────────────────────────╯
+
+  myproject                    groq · llama3-70b
+  ╭─────────────────────────────────────────╮
+  │ ❯ Add user authentication              │
+  ╰─────────────────────────────────────────╯
+```
+
+Two modes — auto-detected from your input:
+- **Chat**: "What does @auth.py do?" → analyzes your code and answers
+- **Build**: "Add JWT authentication" → runs the full 12-stage pipeline
+
+Use `@filename` to target existing files: `Add booking to @pricing.py`
 
 ### Python API
 
@@ -147,38 +169,19 @@ Auto-detection: Set any `*_API_KEY` env var and MACRO finds the right provider.
 | Style matching | File-level context | Basic context | Conversation context | **AST fingerprint** — naming, indentation, logging patterns |
 | Code graph | ✗ | ✗ | ✗ | **Yes** — deterministic AST callers, dependents, impact chains |
 | Conflict detection | ✗ | ✗ | ✗ | **Yes** — auth/framework/DB mismatches caught before planning |
+| GitHub repos | ✗ | ✗ | ✗ | **Yes** — `--github owner/repo` clones and analyzes |
+| Language detection | Manual | Manual | Auto | **Auto** — scans file extensions |
 | Provider flexibility | Locked | Some | Locked | **7 providers** — Gemini, Groq, OpenAI, Anthropic, DeepSeek, Ollama |
 | Cost | $10-500/mo | $0 (BYOK) | $20-200/mo | **$0** with free Groq/Gemini tiers |
 | Fully offline | ✗ | Partial | ✗ | **Yes** — Ollama local models, air-gapped |
 | Pipeline transparency | Black box | Visible | Visible | **12-stage pipeline** with reasoning display |
-| Open source | ✗ | ✅ | ✗ | **✅** Apache 2.0 |
-
-## Evaluation Results
-
-Tested against a real FastAPI project (44 files) with **Groq llama-3.3-70b-versatile**:
-
-| Task | Without RAG | With RAG | Time |
-|------|------------|----------|------|
-| Health check endpoint | 11/11 | 11/11 | 14.5s |
-| Security input validation | 11/11 | 11/11 | 8.8s |
-| Repository pattern refactor | 9/10 | **10/10** | 11.4s |
-| **Total** | **31/32 (96.9%)** | **32/32 (100%)** | **34.7s** |
-
-**Key finding**: RAG eliminated a CWE-89 false positive by providing the repo's actual SQLAlchemy ORM patterns.
-
-```bash
-# Run evaluation yourself
-python evaluation_harness.py --provider groq --task simple-health-check
-
-# Test against real GitHub PRs
-python pr_evaluator.py --repo owner/repo --pr 42 --provider groq
-```
+| Open source | ✗ | ✅ | ✗ | **✅** AGPL v3 |
 
 ## Project Structure
 
 ```
 contextual-architect/
-├── agents/                     # Core multi-agent pipeline (30 modules)
+├── agents/                     # Core multi-agent pipeline
 │   ├── orchestrator.py         # Coordinates all 12 stages
 │   ├── historian.py            # Convention detection
 │   ├── architect.py            # Structure mapping
@@ -191,21 +194,16 @@ contextual-architect/
 │   ├── graph_builder.py        # AST-based code relationship graph
 │   ├── impact_analyzer.py      # Graph queries for affected files
 │   ├── shell_executor.py       # Sandboxed command execution
-│   ├── pipeline_report.py      # GitHub Actions-style dashboard
-│   ├── style_fingerprint.py    # Style extraction
-│   ├── project_scanner.py      # Environment + production detection
-│   ├── clarification_handler.py # Proactive conflict detection
-│   ├── reasoning_display.py    # Rich terminal reasoning output
+│   ├── github_resolver.py      # --github clone + language detection
+│   ├── interactive.py          # Rich interactive CLI session
 │   ├── llm_client.py           # 7 provider support
-│   ├── setup_wizard.py         # Interactive first-time setup
-│   ├── interactive.py          # Interactive CLI session
-│   ├── trace_logger.py         # Distillation data collection
-│   └── tests/                  # 389 unit tests
+│   ├── system_prompts.py       # Senior Engineer persona prompts
+│   └── tests/                  # 420 unit tests
 ├── data_pipeline/              # PR evolution data collection
 ├── rag/                        # RAG layer (ChromaDB + AST chunking)
-├── storage/                    # SQLite persistence
-├── evaluation_harness.py       # Real-LLM testing framework
-└── pr_evaluator.py             # GitHub PR evaluation
+├── docs/                       # Getting started guide
+├── examples/                   # Usage examples
+└── evaluation_harness.py       # Real-LLM testing framework
 ```
 
 ## License
