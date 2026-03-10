@@ -5,7 +5,8 @@ Provides a chat-like terminal session where users can
 send multiple requests to the pipeline without restarting.
 
 Features:
-  - Colored prompt with project info
+  - Rich bordered input box
+  - Persistent footer status bar
   - @file reference parsing
   - Special commands: exit, help, status, config
   - Chat mode: answer questions about the repo
@@ -16,13 +17,23 @@ Features:
 
 import os
 import re
+import shutil
 import sys
 from pathlib import Path
 from typing import Optional
 
+from rich import box
+from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
+from rich.text import Text
+
 from .config import AgentConfig
 from .llm_client import create_llm_client, detect_provider_from_env
 from .orchestrator import OrchestrationResult, Orchestrator
+
+# Rich console — shared instance
+console = Console()
 
 
 # ── ANSI Colors ───────────────────────────────────────────
@@ -57,91 +68,116 @@ def _can_render_unicode() -> bool:
 
 
 def print_banner(repo_path: str, provider: str, lang: str, config: AgentConfig):
-    """Print the startup banner — clean, minimal, like Claude/Gemini CLI."""
-    print()
+    """Print the startup banner — Rich bordered panel with pipeline."""
+    width = min(shutil.get_terminal_size().columns - 4, 80)
 
-    # Clean one-line title
-    print(Colors.colored("  macro", Colors.CYAN + Colors.BOLD) +
-          Colors.colored(" v0.3.0", Colors.DIM) +
-          Colors.colored("  ·  ", Colors.DIM) +
-          Colors.colored(provider, Colors.GREEN) +
-          Colors.colored("  ·  ", Colors.DIM) +
-          Colors.colored(lang, Colors.CYAN))
-    print()
+    # Build the title line
+    title = Text()
+    title.append("macro", style="bold cyan")
+    title.append(" v0.3.0", style="dim")
+    title.append("  ·  ", style="dim")
+    title.append(provider, style="bold green")
+    title.append("  ·  ", style="dim")
+    title.append(lang, style="cyan")
 
-    # Project info — compact
-    print(Colors.colored("  repo  ", Colors.DIM) + repo_path)
-    if config.planner_provider:
-        print(Colors.colored("  plan  ", Colors.DIM) + config.planner_provider +
-              Colors.colored("  (smart planner)", Colors.DIM))
-    print()
-
-    # Pipeline — clean dotted chain
+    # Build the pipeline chain
+    pipeline = Text()
     stages = [
-        ("scan", Colors.CYAN), ("graph", Colors.CYAN),
-        ("plan", Colors.GREEN), ("code", Colors.YELLOW),
-        ("review", Colors.RED), ("test", Colors.CYAN),
-        ("write", Colors.GREEN),
+        ("scan", "cyan"), ("graph", "cyan"),
+        ("plan", "green"), ("code", "yellow"),
+        ("review", "red"), ("test", "cyan"),
+        ("write", "green"),
     ]
-    pipeline = "  "
     for i, (name, color) in enumerate(stages):
-        pipeline += Colors.colored(name, color)
+        pipeline.append(name, style=color)
         if i < len(stages) - 1:
-            pipeline += Colors.colored(" → ", Colors.DIM)
-    print(pipeline)
-    print()
+            pipeline.append(" → ", style="dim")
 
-    # Quick start — minimal
-    print(Colors.colored("  ask   ", Colors.DIM) + Colors.colored("questions about your code", Colors.DIM))
-    print(Colors.colored("  build ", Colors.DIM) + Colors.colored("type what you want to build", Colors.DIM))
-    print(Colors.colored("  help  ", Colors.DIM) + Colors.colored("show all commands", Colors.DIM))
-    print()
+    # Build inner content
+    inner = Text()
+    inner.append("  repo  ", style="dim")
+    inner.append(f"{repo_path}\n")
+    if config.planner_provider:
+        inner.append("  plan  ", style="dim")
+        inner.append(f"{config.planner_provider}")
+        inner.append("  (smart planner)\n", style="dim")
+    inner.append("\n")
+    inner.append_text(pipeline)
+    inner.append("\n\n")
+    inner.append("  ask  ", style="dim italic")
+    inner.append("questions about your code\n", style="dim")
+    inner.append("  build", style="dim italic")
+    inner.append(" type what you want to build\n", style="dim")
+    inner.append("  help ", style="dim italic")
+    inner.append("show all commands", style="dim")
+
+    panel = Panel(
+        inner,
+        title=title,
+        border_style="cyan",
+        box=box.ROUNDED,
+        width=width,
+        padding=(0, 1),
+    )
+    console.print()
+    console.print(panel)
+    console.print()
 
 
 def print_help():
-    """Print available commands."""
-    print()
-    print(Colors.colored("  Commands:", Colors.BOLD))
-    print(Colors.colored("  ─────────────────────────────────────", Colors.DIM))
-    print(Colors.colored("    help", Colors.CYAN) + "          Show this help message")
-    print(Colors.colored("    exit / quit", Colors.CYAN) + "   End the session")
-    print(Colors.colored("    status", Colors.CYAN) + "        Show current configuration")
-    print(Colors.colored("    config", Colors.CYAN) + "        Show saved config path")
-    print(Colors.colored("    clear", Colors.CYAN) + "         Clear the screen")
-    print()
-    print(Colors.colored("  [?] Ask Questions (Chat Mode):", Colors.BOLD))
-    print(Colors.colored("  ─────────────────────────────────────", Colors.DIM))
-    print("    Ask anything about your code or project:")
-    print(Colors.colored("    >", Colors.GREEN) + " What does @Project_1.c do?")
-    print(Colors.colored("    >", Colors.GREEN) + " Explain the architecture of this project")
-    print(Colors.colored("    >", Colors.GREEN) + " Find bugs in @utils.py")
-    print(Colors.colored("    >", Colors.GREEN) + " How does the sorting work in @sort.cpp?")
-    print()
-    print(Colors.colored("  [+] Build Code (Generate Mode):", Colors.BOLD))
-    print(Colors.colored("  ─────────────────────────────────────", Colors.DIM))
-    print("    Type what you want to build in plain English:")
-    print(Colors.colored("    >", Colors.GREEN) + " Add user authentication")
-    print(Colors.colored("    >", Colors.GREEN) + " Create a linked list implementation")
-    print(Colors.colored("    >", Colors.GREEN) + " Add binary search to @sorting.cpp")
-    print()
-    print(Colors.colored("  [@] File References:", Colors.BOLD))
-    print(Colors.colored("  ─────────────────────────────────────", Colors.DIM))
-    print("    Use @ before a filename to modify or ask about an existing file:")
-    print(Colors.colored("    >", Colors.GREEN) + " Add booking to @Movie_ticket_pricing.py")
-    print(Colors.colored("    >", Colors.GREEN) + " What does @Armstrong.cpp do?")
-    print("    Without @, a new file is created (in build mode).")
-    print()
-    print(Colors.colored("  Pseudocode (|||):", Colors.BOLD))
-    print(Colors.colored("  ─────────────────────────────────────", Colors.DIM))
-    print("    Add pseudocode after ||| to control the logic:")
-    print(Colors.colored("    ❯", Colors.GREEN) + " Add fibonacci ||| 1. Take n 2. Iterative 3. Print all")
-    print(Colors.colored("    ❯", Colors.GREEN) + " Add sort to @data.cpp ||| use merge sort, not bubble sort")
-    print()
-    print(Colors.colored("  Supported Languages:", Colors.BOLD))
-    print(Colors.colored("  ─────────────────────────────────────", Colors.DIM))
-    print("    python │ cpp │ c │ go │ typescript │ javascript │ java")
-    print("    Set with: --lang cpp")
-    print()
+    """Print available commands — Rich panels."""
+    width = min(shutil.get_terminal_size().columns - 4, 80)
+
+    # ── Commands table ──
+    cmd_table = Table(show_header=False, box=None, padding=(0, 2, 0, 0))
+    cmd_table.add_column(style="cyan bold", no_wrap=True)
+    cmd_table.add_column(style="dim")
+    cmd_table.add_row("help", "Show this help message")
+    cmd_table.add_row("exit / quit", "End the session")
+    cmd_table.add_row("status", "Show current configuration")
+    cmd_table.add_row("config", "Show saved config path")
+    cmd_table.add_row("clear", "Clear the screen")
+
+    console.print(Panel(
+        cmd_table, title="[bold]Commands[/]",
+        border_style="dim", box=box.ROUNDED, width=width, padding=(0, 1),
+    ))
+
+    # ── Usage ──
+    usage = Text()
+    usage.append("[?] Chat Mode", style="bold cyan")
+    usage.append(" — ask questions about your code:\n")
+    usage.append("  ❯ ", style="green")
+    usage.append("What does @Project_1.c do?\n")
+    usage.append("  ❯ ", style="green")
+    usage.append("Find bugs in @utils.py\n")
+    usage.append("\n")
+    usage.append("[+] Build Mode", style="bold yellow")
+    usage.append(" — generate code in plain English:\n")
+    usage.append("  ❯ ", style="green")
+    usage.append("Add user authentication\n")
+    usage.append("  ❯ ", style="green")
+    usage.append("Add binary search to @sorting.cpp\n")
+    usage.append("\n")
+    usage.append("[@] File References", style="bold magenta")
+    usage.append(" — target specific files:\n")
+    usage.append("  ❯ ", style="green")
+    usage.append("Add booking to @Movie_ticket_pricing.py\n")
+    usage.append("  Without @, a new file is created (in build mode).\n", style="dim")
+    usage.append("\n")
+    usage.append("Pseudocode (|||)", style="bold")
+    usage.append(" — control the logic:\n")
+    usage.append("  ❯ ", style="green")
+    usage.append("Add fibonacci ||| 1. Take n 2. Iterative 3. Print all\n")
+    usage.append("\n")
+    usage.append("Languages: ", style="bold")
+    usage.append("python │ cpp │ c │ go │ typescript │ javascript │ java", style="dim")
+
+    console.print(Panel(
+        usage, title="[bold]Usage[/]",
+        border_style="dim", box=box.ROUNDED, width=width, padding=(0, 1),
+    ))
+    console.print()
 
 
 def _is_safe_path(filepath: Path, repo_root: Path) -> bool:
@@ -354,8 +390,7 @@ async def handle_chat(
 
     Reads relevant files, sends to LLM with the question, prints the answer.
     """
-    print(Colors.colored("  [?] Chat Mode", Colors.CYAN + Colors.BOLD))
-    print(Colors.colored("  ─────────────────────────────────────", Colors.DIM))
+    console.print("  [bold cyan]◆ Chat Mode[/]")
 
     # Collect context
     file_context = _collect_file_contents(repo_path, user_input, lang)
@@ -388,7 +423,7 @@ User question: {clean_question}
 """
 
     try:
-        print(Colors.colored("  ⏳ Thinking...", Colors.DIM), end='\r')
+        console.print("  [dim]⏳ Thinking...[/]", end='\r')
         response = await llm_client.generate(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
@@ -398,14 +433,20 @@ User question: {clean_question}
         # Clear the "Thinking..." line
         print("                        ", end='\r')
 
-        # Print the response
+        # Print the response with ◆ prefix
         answer = response.content.strip()
-        for line in answer.split('\n'):
-            print(Colors.colored("  │ ", Colors.CYAN) + line)
-        print()
+        width = min(shutil.get_terminal_size().columns - 4, 80)
+        response_panel = Panel(
+            answer,
+            border_style="cyan",
+            box=box.ROUNDED,
+            width=width,
+            padding=(0, 1),
+        )
+        console.print(response_panel)
     except Exception as e:
-        print(Colors.colored(f"  ❌ Chat error: {e}", Colors.RED))
-        print()
+        console.print(f"  [bold red]❌ Chat error:[/] {e}")
+        console.print()
 
 
 # ── Pseudocode Alignment Check ────────────────────────────
@@ -527,45 +568,59 @@ def _handle_write_flow(changeset, repo_path: str):
 
     safe = changeset.safe_changes
     needs_approval = changeset.permission_required
+    width = min(shutil.get_terminal_size().columns - 4, 80)
 
-    # Header
-    print(Colors.colored("  ─── Proposed Changes ───", Colors.CYAN + Colors.BOLD))
-    print()
+    # ── Build diff display ──
+    diff_content = Text()
 
     # Show safe changes (auto-approved)
     if safe:
         for change in safe:
-            print(Colors.colored(f"    + {change.file_path}", Colors.GREEN) +
-                  Colors.colored(" (new file — auto-approved)", Colors.DIM))
+            diff_content.append(f"  ✓ {change.file_path}", style="bold green")
+            diff_content.append(" (new file — auto-approved)\n", style="dim")
 
-    # Show risky changes
+    # Show risky changes with colored diffs
     if needs_approval:
-        print()
+        diff_content.append("\n")
         for i, change in enumerate(needs_approval):
-            risk_colors = {
-                "low": Colors.WHITE,
-                "medium": Colors.YELLOW,
-                "high": Colors.MAGENTA,
-                "critical": Colors.RED,
+            risk_styles = {
+                "low": "white", "medium": "yellow",
+                "high": "magenta", "critical": "bold red",
             }
-            color = risk_colors.get(change.risk_level.value, Colors.WHITE)
-            print(Colors.colored(
-                f"    [{i+1}] {change.file_path} ({change.risk_level.value} risk)",
-                color + Colors.BOLD,
-            ))
-            print(Colors.colored(f"        {change.description}", Colors.DIM))
-            # Compact diff
-            for line in change.diff_lines[:6]:
-                if line.startswith('+'):
-                    print(Colors.colored(f"        {line}", Colors.GREEN))
-                elif line.startswith('-'):
-                    print(Colors.colored(f"        {line}", Colors.RED))
-            if len(change.diff_lines) > 6:
-                print(Colors.colored(
-                    f"        ... {len(change.diff_lines) - 6} more lines",
-                    Colors.DIM,
-                ))
-            print()
+            style = risk_styles.get(change.risk_level.value, "white")
+            diff_content.append(
+                f"  [{i+1}] {change.file_path}", style=f"bold {style}"
+            )
+            diff_content.append(
+                f" ({change.risk_level.value} risk)\n", style=style
+            )
+            diff_content.append(f"      {change.description}\n", style="dim")
+
+            # Colored diff lines — the core visual improvement
+            for line in change.diff_lines[:10]:
+                if line.startswith('+') and not line.startswith('+++'):
+                    diff_content.append(f"      {line}\n", style="green")
+                elif line.startswith('-') and not line.startswith('---'):
+                    diff_content.append(f"      {line}\n", style="red")
+                elif line.startswith('@@'):
+                    diff_content.append(f"      {line}\n", style="cyan")
+                else:
+                    diff_content.append(f"      {line}\n", style="dim")
+            if len(change.diff_lines) > 10:
+                diff_content.append(
+                    f"      ... {len(change.diff_lines) - 10} more lines\n",
+                    style="dim italic"
+                )
+            diff_content.append("\n")
+
+    console.print(Panel(
+        diff_content,
+        title="[bold cyan]Proposed Changes[/]",
+        border_style="cyan",
+        box=box.ROUNDED,
+        width=width,
+        padding=(0, 1),
+    ))
 
     if not needs_approval:
         # All changes are safe — auto-apply
@@ -576,20 +631,20 @@ def _handle_write_flow(changeset, repo_path: str):
         return
 
     # Ask for approval
-    print(Colors.colored(
-        "  Options: [a]pprove all | [1,2,3] approve specific | [n]one",
-        Colors.BOLD,
-    ))
+    console.print(
+        r"  [bold]Options:[/] [cyan]\[a]pprove all[/] │ "
+        r"[cyan]\[1,2,3][/] approve specific │ [cyan]\[n]one[/]"
+    )
     try:
-        choice = input(Colors.colored("  > ", Colors.GREEN + Colors.BOLD)).strip().lower()
+        choice = input(Colors.colored("  ❯ ", Colors.GREEN + Colors.BOLD)).strip().lower()
     except (KeyboardInterrupt, EOFError):
-        print(Colors.colored("\n  Cancelled — no files written.", Colors.YELLOW))
+        console.print("  [yellow]Cancelled — no files written.[/]")
         return
 
     if choice in ('a', 'y', 'yes', 'all'):
         changeset.approve_all()
     elif choice in ('n', 'no', 'none', 'q', 'quit'):
-        print(Colors.colored("  Skipped — no files written.", Colors.DIM))
+        console.print("  [dim]Skipped — no files written.[/]")
         return
     else:
         # Parse indices: "1,3" or "1 3"
@@ -599,7 +654,7 @@ def _handle_write_flow(changeset, repo_path: str):
                 c.approved = True
             changeset.approve_by_index(indices)
         except ValueError:
-            print(Colors.colored("  Invalid input — no files written.", Colors.YELLOW))
+            console.print("  [yellow]Invalid input — no files written.[/]")
             return
 
     # Apply
@@ -610,28 +665,28 @@ def _handle_write_flow(changeset, repo_path: str):
 
 def _print_write_report(report: dict):
     """Show what was written to disk."""
-    print()
-    if report.get("applied"):
-        print(Colors.colored(
-            f"  Written {report['total_applied']} file(s):",
-            Colors.GREEN + Colors.BOLD,
-        ))
-        for f in report["applied"]:
-            print(Colors.colored(f"    {f}", Colors.GREEN))
-    if report.get("backed_up"):
-        print(Colors.colored(
-            f"  {len(report['backed_up'])} backup(s) created",
-            Colors.DIM,
-        ))
-    if report.get("skipped") and report["total_skipped"] > 0:
-        print(Colors.colored(
-            f"  Skipped {report['total_skipped']} file(s)",
-            Colors.DIM,
-        ))
-    if report.get("errors"):
-        print(Colors.colored("  Errors:", Colors.RED))
-        for e in report["errors"]:
-            print(Colors.colored(f"    {e}", Colors.RED))
+    created = report.get('created', [])
+    modified = report.get('modified', [])
+    backed_up = report.get('backed_up', [])
+    errors = report.get('errors', [])
+
+    console.print()
+    if created:
+        for f in created:
+            console.print(f"  [bold green]✓ Created:[/] {f}")
+    if modified:
+        for f in modified:
+            console.print(f"  [bold yellow]✓ Modified:[/] {f}")
+    if backed_up:
+        console.print(f"  [dim]📦 {len(backed_up)} backup(s) saved[/]")
+    if errors:
+        for e in errors:
+            console.print(f"  [bold red]✗ Error:[/] {e}")
+
+    total = len(created) + len(modified)
+    if total > 0 and not errors:
+        console.print(f"\n  [bold green]✅ {total} file(s) written successfully.[/]")
+    console.print()
 
 
 async def run_single_request(
@@ -764,12 +819,39 @@ async def interactive_session(args) -> int:
     # Track session
     request_count = 0
 
+    def _print_footer():
+        """Print the persistent footer status bar."""
+        term_width = shutil.get_terminal_size().columns
+        repo_name = Path(repo_path).name
+        model_name = getattr(llm_client, 'model_name', provider)
+        left = f"  {repo_name}"
+        right = f"{provider} · {model_name}  "
+        padding = term_width - len(left) - len(right)
+        if padding < 1:
+            padding = 1
+        footer = f"\033[2m{left}{' ' * padding}{right}\033[0m"
+        print(footer)
+
+    def _bordered_input() -> str:
+        """Show a bordered input box and read user input."""
+        term_width = min(shutil.get_terminal_size().columns - 4, 80)
+        inner_w = term_width - 2
+        top = f"  ╭{'─' * inner_w}╮"
+        bottom = f"  ╰{'─' * inner_w}╯"
+        _print_footer()
+        print(Colors.colored(top, Colors.DIM))
+        try:
+            user_in = input(Colors.colored("  │ ", Colors.DIM) +
+                           Colors.colored("❯ ", Colors.GREEN + Colors.BOLD))
+        finally:
+            print(Colors.colored(bottom, Colors.DIM))
+        return user_in.strip()
+
     # Interactive loop
     while True:
         try:
-            # Prompt
-            prompt = Colors.colored("  > ", Colors.GREEN + Colors.BOLD)
-            user_input = input(prompt).strip()
+            # Bordered input prompt
+            user_input = _bordered_input()
 
             if not user_input:
                 continue
@@ -787,7 +869,7 @@ async def interactive_session(args) -> int:
             cmd = user_input.lower()
 
             if cmd in ("exit", "quit", "q"):
-                print(Colors.colored(f"\n  Session ended. {request_count} requests processed.\n", Colors.DIM))
+                console.print(f"\n  [dim]Session ended. {request_count} requests processed.[/]\n")
                 return 0
 
             elif cmd == "help":
@@ -800,18 +882,24 @@ async def interactive_session(args) -> int:
                 continue
 
             elif cmd == "status":
-                print()
-                print(Colors.colored("  Current Status:", Colors.BOLD))
-                print(f"    Repo:       {repo_path}")
-                print(f"    Language:   {lang}")
-                print(f"    Provider:   {provider}")
-                print(f"    Model:      {llm_client.model_name}")
+                status_table = Table(show_header=False, box=None, padding=(0, 2, 0, 0))
+                status_table.add_column(style="bold cyan", no_wrap=True)
+                status_table.add_column()
+                status_table.add_row("Repo", repo_path)
+                status_table.add_row("Language", lang)
+                status_table.add_row("Provider", provider)
+                status_table.add_row("Model", llm_client.model_name)
                 if config.planner_provider:
-                    print(f"    Planner:    {config.planner_provider}")
+                    status_table.add_row("Planner", config.planner_provider)
                 if config.implementer_provider:
-                    print(f"    Implementer: {config.implementer_provider}")
-                print(f"    Requests:   {request_count}")
-                print()
+                    status_table.add_row("Implementer", config.implementer_provider)
+                status_table.add_row("Requests", str(request_count))
+                width = min(shutil.get_terminal_size().columns - 4, 80)
+                console.print(Panel(
+                    status_table, title="[bold]Status[/]",
+                    border_style="cyan", box=box.ROUNDED,
+                    width=width, padding=(0, 1),
+                ))
                 continue
 
             elif cmd == "config":
@@ -871,9 +959,9 @@ async def interactive_session(args) -> int:
             print()
 
         except KeyboardInterrupt:
-            print(Colors.colored(f"\n\n  Session ended. {request_count} requests processed.\n", Colors.DIM))
+            console.print(f"\n\n  [dim]Session ended. {request_count} requests processed.[/]\n")
             return 0
 
         except EOFError:
-            print(Colors.colored(f"\n\n  Session ended. {request_count} requests processed.\n", Colors.DIM))
+            console.print(f"\n\n  [dim]Session ended. {request_count} requests processed.[/]\n")
             return 0
