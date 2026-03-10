@@ -2,8 +2,9 @@
 CLI entry point for Contextual Architect.
 
 Usage:
-    python -m agents "Add JWT authentication middleware" --repo ./myproject --lang python
-    python -m agents -i --repo ./myproject --lang python  # interactive mode
+    python -m agents "Add JWT authentication middleware" --repo ./myproject
+    python -m agents --repo ./myproject                      # auto-interactive
+    python -m agents --github tiangolo/fastapi               # clone + analyze
     python -m agents --help
 """
 
@@ -30,14 +31,20 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Single-shot mode
-  python -m agents "Add JWT auth middleware" --repo ./myproject --lang python
+  # Just point at a project — language is auto-detected
+  python -m agents "Add JWT auth middleware" --repo ./myproject
+
+  # No request? Auto-enters interactive mode
+  python -m agents --repo ./myproject
+
+  # Clone and analyze any GitHub repo
+  python -m agents --github tiangolo/fastapi
+
+  # Private repos (set GITHUB_TOKEN)
+  python -m agents --github myorg/private-api --provider groq
 
   # Multi-provider (Gemini for planning, Groq for fast agents)
   python -m agents "Add caching" --repo ./myproject --provider groq --planner-provider google
-
-  # Interactive chat mode
-  python -m agents -i --repo ./myproject --lang python
 
   # Save config for reuse
   python -m agents --save-config --provider groq --planner-provider google
@@ -61,11 +68,18 @@ Examples:
         help="Path to the repository (default: current directory)",
     )
     parser.add_argument(
+        "--github", "-g",
+        type=str,
+        default=None,
+        metavar="OWNER/REPO",
+        help="GitHub repository to clone and analyze (e.g., tiangolo/fastapi)",
+    )
+    parser.add_argument(
         "--lang", "-l",
         type=str,
-        default="python",
-        choices=["python", "go", "typescript", "javascript", "cpp", "c", "java"],
-        help="Programming language (default: python)",
+        default="auto",
+        choices=["auto", "python", "go", "typescript", "javascript", "cpp", "c", "java"],
+        help="Programming language (default: auto-detect from files)",
     )
 
     # LLM configuration
@@ -275,11 +289,34 @@ async def run(args) -> int:
         fmt="pretty",
     )
 
-    # Resolve repo path
-    repo_path = os.path.abspath(args.repo)
-    if not os.path.isdir(repo_path):
-        logger.error(f"Repository path does not exist: {repo_path}")
-        return 1
+    # Resolve repo path — GitHub or local
+    if args.github:
+        from .github_resolver import resolve_github_repo
+        token = os.environ.get("GITHUB_TOKEN")
+        logger.info(f"Cloning {args.github}...")
+        print(f"  \U0001f310 Cloning {args.github}...")
+        try:
+            repo_path, detected_lang = resolve_github_repo(
+                args.github, token=token,
+            )
+        except (ValueError, RuntimeError) as e:
+            logger.error(str(e))
+            return 1
+        # Auto-detect language unless user explicitly set it
+        if args.lang == "auto":
+            args.lang = detected_lang
+        print(f"  \u2705 Cloned to {repo_path} (detected: {args.lang})")
+    else:
+        repo_path = os.path.abspath(args.repo)
+        if not os.path.isdir(repo_path):
+            logger.error(f"Repository path does not exist: {repo_path}")
+            return 1
+
+    # Auto-detect language if 'auto'
+    if args.lang == "auto":
+        from .github_resolver import detect_language
+        args.lang = detect_language(repo_path)
+        logger.info(f"Auto-detected language: {args.lang}")
 
     # Determine provider and API key
     # Priority: CLI args > env vars > config file
@@ -603,9 +640,34 @@ def main():
         print(f"\u2705 Config saved to: {path}")
         sys.exit(0)
 
-    # Handle --interactive mode
-    if args.interactive:
+    # Handle --interactive mode OR auto-interactive (no request given)
+    if args.interactive or (not args.request and not args.save_config and not args.setup):
         from .interactive import interactive_session
+
+        # Auto-detect language before entering interactive
+        if args.lang == "auto" and not args.github:
+            from .github_resolver import detect_language
+            repo_path = os.path.abspath(args.repo)
+            if os.path.isdir(repo_path):
+                args.lang = detect_language(repo_path)
+
+        # Resolve --github for interactive mode
+        if args.github:
+            from .github_resolver import resolve_github_repo
+            token = os.environ.get("GITHUB_TOKEN")
+            print(f"  \U0001f310 Cloning {args.github}...")
+            try:
+                repo_path, detected_lang = resolve_github_repo(
+                    args.github, token=token,
+                )
+                args.repo = repo_path
+                if args.lang == "auto":
+                    args.lang = detected_lang
+                print(f"  \u2705 Cloned to {repo_path} (detected: {args.lang})")
+            except (ValueError, RuntimeError) as e:
+                print(f"  \u274c {e}")
+                sys.exit(1)
+
         try:
             exit_code = asyncio.run(interactive_session(args))
         except (KeyboardInterrupt, asyncio.CancelledError):
