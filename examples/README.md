@@ -1,13 +1,11 @@
 # MACRO Examples
 
-## 1. Interactive Mode (Recommended)
+## 1. Zero Config (Recommended)
 
 ```bash
-# Just point at a project — language auto-detected, interactive auto-starts
-python -m agents --repo ./your-project
-
-# Analyze any GitHub repo
-python -m agents --github tiangolo/fastapi
+# cd into any project folder, type macro
+cd myproject
+macro
 
 # Inside the session:
 #   ❯ Add a /health endpoint              (builds code)
@@ -15,41 +13,41 @@ python -m agents --github tiangolo/fastapi
 #   ❯ Add JWT auth to @middleware.py      (modifies existing file)
 ```
 
-## 2. Single-Shot Mode
-
-```bash
-# Generate a feature (language auto-detected)
-python -m agents "Add user registration with email validation" --repo ./myapp
-
-# Modify existing file
-python -m agents "Add a timeout parameter to @database.py" --repo ./myapp
-
-# With pseudocode control
-python -m agents "Add fibonacci ||| 1. Take n 2. Iterative loop 3. Print sequence" --repo .
-
-# Dry run (preview only, no file writes)
-python -m agents "Add health check" --repo ./myapp --dry-run
-```
-
-## 3. GitHub Repos
+## 2. GitHub Repos
 
 ```bash
 # Clone and analyze any public repo
-python -m agents --github tiangolo/fastapi
+macro --github tiangolo/fastapi
 
-# Private repos (set GITHUB_TOKEN)
+# Private repos
 export GITHUB_TOKEN=ghp_xxxx
-python -m agents --github myorg/private-api
+macro --github myorg/private-api
 ```
 
-## 4. Multi-Provider Setup
+## 3. Single-Shot Mode
+
+```bash
+# Generate a feature
+macro "Add user registration with email validation"
+
+# Modify existing file
+macro "Add a timeout parameter to @database.py"
+
+# With pseudocode
+macro "Add fibonacci ||| 1. Take n 2. Iterative loop 3. Print sequence"
+
+# Dry run (preview only)
+macro "Add health check" --dry-run
+```
+
+## 4. Multi-Provider
 
 ```bash
 # Fast agents (Groq) + smart planner (Gemini)
-python -m agents --repo . --provider groq --planner-provider google
+macro --provider groq --planner-provider google
 
 # Fully offline with Ollama
-python -m agents --repo . --provider ollama --model codellama
+macro --provider ollama --model codellama
 ```
 
 ## 5. Python API
@@ -84,7 +82,6 @@ asyncio.run(main())
 from agents.graph_builder import GraphBuilder
 from agents.impact_analyzer import ImpactAnalyzer
 
-# Build graph from any project
 graph = GraphBuilder("./my-project").build()
 analyzer = ImpactAnalyzer(graph)
 
@@ -93,5 +90,5 @@ callers = analyzer.get_callers("auth.py", "login")
 
 # What would break if I change this file?
 impact = analyzer.analyze_impact("models/user.py")
-print(impact)  # Shows affected files, functions, and import chains
+print(impact)
 ```

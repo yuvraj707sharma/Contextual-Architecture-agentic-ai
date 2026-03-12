@@ -30,7 +30,7 @@ pip install --upgrade pip setuptools wheel
 pip install -e ".[dev]"
 ```
 
-> **WARNING**: If `pip install -e .` fails with a setuptools error, you can skip it and use `python -m agents` instead of `macro`. Just make sure to always run from inside the project folder.
+> **WARNING**: If `pip install -e .` fails, you can use `python -m agents` instead of `macro`. Just always run from inside the project folder.
 
 ### 1.4 Set an API Key
 
@@ -43,22 +43,22 @@ pip install -e ".[dev]"
 | **OpenAI** | Paid only | https://platform.openai.com |
 | **Anthropic** | Paid only | https://console.anthropic.com |
 
-Set your key:
-
 ```cmd
 :: Windows CMD (no quotes around the value!)
 set GROQ_API_KEY=gsk_xxxxxxxxxxxx
 
-:: Or use the interactive setup wizard
-python -m agents --setup
+:: Or use the setup wizard
+macro --setup
 ```
 
-> After setup, keys are saved permanently. You won't need to set them again.
+> After setup, keys are saved permanently.
 
 ### 1.5 Verify It Works
 
+Open CMD, `cd` into any project folder, and type:
+
 ```cmd
-python -m agents --repo .
+macro
 ```
 
 You should see the MACRO banner with the bordered input box. Type `exit` to quit.
@@ -67,26 +67,42 @@ You should see the MACRO banner with the bordered input box. Type `exit` to quit
 
 ## Step 2: Usage
 
-### Interactive Mode (Recommended)
-
-Just point MACRO at any project folder — language is auto-detected, interactive mode auto-starts:
+### The Simplest Way
 
 ```cmd
-:: Python project
-python -m agents --repo "C:\path\to\your\project"
-
-:: C++ project
-python -m agents --repo "C:\DSA\Basic_Mathematics"
-
-:: Any GitHub repo (clones automatically)
-python -m agents --github tiangolo/fastapi
+:: Open CMD in your project folder, then just type:
+macro
 ```
 
-You'll see:
+That's it. MACRO:
+- **Detects the language** from your files (Python, C++, Java, etc.)
+- **Enters interactive mode** automatically
+- **Uses current directory** as the project
+
+### Other Ways to Launch
+
+```cmd
+:: Analyze any GitHub repo (clones automatically)
+macro --github tiangolo/fastapi
+
+:: Point at a different folder
+macro --repo "C:\path\to\other\project"
+
+:: Single-shot (run one command and exit)
+macro "Add login system"
+
+:: Auto-approve all file changes
+macro "Add login system" --yes
+
+:: Preview without writing files
+macro "Add login system" --dry-run
+```
+
+### What You'll See
 
 ```
 ╭──── macro v0.3.0  ·  groq  ·  python ────╮
-│  repo  C:\path\to\your\project            │
+│  repo  C:\your\project                    │
 │                                           │
 │  scan → graph → plan → code → review →    │
 │  test → write                             │
@@ -106,12 +122,12 @@ You'll see:
 
 | You Type | Mode | What Happens |
 |----------|------|-------------|
-| "What does this project do?" | Chat | Analyzes your code and answers the question |
+| "What does this project do?" | Chat | Analyzes your code and answers |
 | "Is there any security issue?" | Chat | Reviews your code for vulnerabilities |
-| "Add user authentication" | Build | Runs the full 12-stage pipeline and generates code |
+| "Add user authentication" | Build | Runs the full 12-stage pipeline |
 | "Add sort to @data.cpp" | Build | Modifies the specified file |
 
-**Interactive Commands:**
+**Commands:**
 
 | Command | What It Does |
 |---------|-------------|
@@ -120,32 +136,6 @@ You'll see:
 | `config` | Show saved config path |
 | `clear` | Clear the screen |
 | `exit` / `quit` | End the session |
-
-### Single-Shot Mode
-
-Run one request and exit:
-
-```cmd
-python -m agents "Add login system" --repo "C:\my\project"
-python -m agents "Add binary search algorithm" --repo "C:\DSA"
-
-:: Auto-approve all changes (skip permission prompts)
-python -m agents "Add login system" --repo "C:\my\project" --yes
-
-:: Preview without writing files
-python -m agents "Add login system" --repo "C:\my\project" --dry-run
-```
-
-### GitHub Repos
-
-```cmd
-:: Any public repo — clones and caches automatically
-python -m agents --github tiangolo/fastapi
-
-:: Private repos
-set GITHUB_TOKEN=ghp_xxxx
-python -m agents --github myorg/private-api
-```
 
 ---
 
@@ -169,7 +159,7 @@ If you don't mention a file, MACRO creates a **new file**:
 
 ```
 ❯ Add sorting algorithm
-  --> Creates: sorting_algorithm.py (new file)
+  --> Creates: sorting_algorithm.py
 
 ❯ Add binary search
   --> Creates: binary_search.cpp (if project is C++)
@@ -183,8 +173,6 @@ Pseudocode gives MACRO exact instructions on what logic to write.
 
 ### In Interactive Mode (using |||)
 
-Type your request, then `|||`, then the pseudocode:
-
 ```
 ❯ Add factorial ||| 1. Take n from user 2. Use loop not recursion 3. Handle negative input
 ❯ Add GCD and LCM ||| 1. Take two numbers 2. GCD using Euclidean algorithm 3. LCM = (a*b)/GCD
@@ -194,25 +182,7 @@ Type your request, then `|||`, then the pseudocode:
 ### In Single-Shot Mode (using --pseudocode)
 
 ```cmd
-python -m agents "Add movie booking" --repo "C:\project" --pseudocode "1. Ask number of tickets 2. Ask seat type 3. Calculate total 4. Print receipt"
-```
-
-### From a File
-
-Create `my_plan.txt`:
-
-```
-1. Get user age and day of week
-2. Base price: $12 for adults, $8 for children
-3. Wednesday discount: $2 off
-4. Calculate total
-5. Print receipt
-```
-
-Then:
-
-```cmd
-python -m agents "Add booking to @Movie_ticket_pricing.py" --repo "C:\project" --pseudocode my_plan.txt
+macro "Add movie booking" --pseudocode "1. Ask number of tickets 2. Ask seat type 3. Calculate total"
 ```
 
 ---
@@ -223,43 +193,14 @@ Use different AI models for different tasks:
 
 ```cmd
 :: Gemini plans (smarter), Groq executes (faster)
-python -m agents --repo "C:\project" --planner-provider google
+macro --planner-provider google
 ```
-
-| Agent | Default Provider | What It Does |
-|-------|-----------------|-------------|
-| Historian | Groq (fast) | Detects project conventions |
-| Architect | Groq (fast) | Maps project structure |
-| **Planner** | **Gemini** (smart) | Plans what to build |
-| **Implementer** | Groq/Gemini | Writes the actual code |
-| Reviewer | Groq (fast) | Validates the output |
-| Test Generator | Groq | Creates unit tests |
 
 ---
 
 ## Step 6: Understanding the Output
 
-Every build run produces a **pipeline dashboard** (like GitHub Actions):
-
-```
-┌── 🔄 ✅ PIPELINE PASSED in 2340ms ──────────────────────┐
-│ Request: Add JWT authentication to login endpoint        │
-│ Target:  services/auth.py                                │
-│ Complexity: medium                                       │
-└──────────────────────────────────────────────────────────┘
-
-┌── 📊 Summary ───────────────────────────────────────────┐
-│ 📋 What was done:                                        │
-│   📚 Historian: Found existing session-based auth        │
-│   🏗️ Architect: Target: services/auth.py (MODIFY)       │
-│   📝 Planner: Add JWT auth with token refresh            │
-│ 💡 Why these decisions:                                  │
-│   • Matched project style: snake_case naming             │
-│   • Target file: services/auth.py (action: MODIFY)       │
-└──────────────────────────────────────────────────────────┘
-```
-
-After code generation, MACRO shows proposed changes in a colored diff panel and asks for approval:
+After code generation, MACRO shows proposed changes in a colored diff panel:
 
 ```
 ╭──── Proposed Changes ─────────────────────╮
@@ -278,35 +219,26 @@ After code generation, MACRO shows proposed changes in a colored diff panel and 
 ## Quick Reference
 
 ```cmd
-:: Just point at a project (auto-detect + interactive)
-python -m agents --repo "C:\project"
+:: The simplest way — cd into project, type macro
+macro
 
-:: GitHub repo
-python -m agents --github tiangolo/fastapi
+:: Analyze a GitHub repo
+macro --github tiangolo/fastapi
 
 :: Single-shot
-python -m agents "Add feature" --repo "C:\project"
+macro "Add feature"
 
-:: With pseudocode (CLI)
-python -m agents "Add feature" --repo "C:\project" --pseudocode "1. Do X 2. Do Y"
-
-:: With pseudocode (interactive)
-:: Inside the ❯ prompt, type:  Add feature ||| 1. Do X 2. Do Y
+:: With pseudocode
+macro "Add feature" --pseudocode "1. Do X 2. Do Y"
 
 :: Multi-provider
-python -m agents "Add feature" --repo "C:\project" --planner-provider google
+macro --planner-provider google
 
 :: Save config
-python -m agents --save-config --provider groq --planner-provider google
+macro --save-config --provider groq
 
 :: Help
-python -m agents --help
-
-:: Auto-approve all changes
-python -m agents "Add feature" --repo "C:\project" --yes
-
-:: Preview without writing
-python -m agents "Add feature" --repo "C:\project" --dry-run
+macro --help
 ```
 
 ### Supported Languages (auto-detected)
@@ -323,14 +255,12 @@ python -m agents "Add feature" --repo "C:\project" --dry-run
 
 | Problem | Fix |
 |---------|-----|
-| `macro` not recognized | Run `pip install -e .` from the project folder, or use `python -m agents` |
-| `No module named agents` | You're not in the project folder. `cd` into it first |
-| `GROQ_API_KEY not found` | Run `python -m agents --save-config --provider groq --api-key YOUR_KEY` |
-| `Repository path does not exist` | Check the `--repo` path is correct |
-| Tool creates new file instead of modifying | Use `@filename` in your request |
-| `BLOCKED: 80% deletion` | The tool protected your file from replacement |
+| `macro` not recognized | Run `pip install -e .` from the project folder |
+| `No module named agents` | Use `macro` command, or `cd` into the project folder first |
+| `GROQ_API_KEY not found` | Run `macro --save-config --provider groq --api-key YOUR_KEY` |
+| `Repository path does not exist` | Check the `--repo` path or just `cd` into the project |
+| Creates new file instead of modifying | Use `@filename` in your request |
 | Slow response | Groq free tier: 30 req/min. Wait and retry |
-| `UnicodeEncodeError` | Use Windows Terminal instead of cmd, or update to latest version |
 
 ---
 

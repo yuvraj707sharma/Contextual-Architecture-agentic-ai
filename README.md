@@ -15,13 +15,13 @@
 ## Why MACRO?
 
 - **$0 with free APIs**: Use Groq (30 req/min) or Gemini (15 req/min) free tiers. No subscription.
-- **7 LLM providers**: Google Gemini, Groq, OpenAI, Anthropic, DeepSeek, Ollama, Mock. Bring your own key.
-- **12-stage pipeline**: Not one prompt — a full pipeline that scans, graphs, plans, validates, reviews, and tests before writing.
-- **Works on any GitHub repo**: `--github owner/repo` clones and analyzes any public or private repository.
-- **Auto-detects language**: No `--lang` flag needed — MACRO scans your files and figures it out.
-- **Code graph intelligence**: AST-based dependency graph finds callers, affected files, and impact chains — deterministic, not LLM guesses.
+- **Zero config**: `cd` into your project, type `macro`. That's it. Language auto-detected, interactive mode auto-starts.
+- **Works on any GitHub repo**: `macro --github owner/repo` clones and analyzes any public or private repository.
+- **7 LLM providers**: Google Gemini, Groq, OpenAI, Anthropic, DeepSeek, Ollama, Mock.
+- **12-stage pipeline**: Scan → graph → plan → validate → implement → review → test → write.
+- **Code graph intelligence**: AST-based dependency graph finds callers, affected files, and impact chains.
 - **Style-aware**: Learns your naming conventions, indentation, logging patterns, and error handling.
-- **Senior-level code**: Every agent thinks as a Staff+ Engineer with a Security Specialist persona — CWE denylist, input validation, sad-path handling.
+- **Senior-level code**: Every agent thinks as a Staff+ Engineer with a Security Specialist persona.
 - **Permission-based**: Never writes a file without showing you the diff and asking first.
 - **Self-hosted**: Runs fully offline with Ollama. Your code never leaves your machine.
 - **Open source**: AGPL v3 licensed.
@@ -40,42 +40,42 @@ pip install -e ".[dev]"
 # Linux / macOS
 export GROQ_API_KEY=your_key_here
 
-# Windows CMD
+# Windows CMD (no quotes!)
 set GROQ_API_KEY=your_key_here
 ```
 
-Or run the interactive setup wizard:
-
-```bash
-python -m agents --setup
-```
+Or run the interactive setup wizard: `macro --setup`
 
 ## Usage
 
 ```bash
-# Just point at a project — language auto-detected, interactive mode auto-starts
-python -m agents --repo ./myproject
+# Just cd into your project and type macro
+cd myproject
+macro
+```
 
+That's it. MACRO auto-detects the language, enters interactive mode, and you start chatting.
+
+### More examples
+
+```bash
 # Analyze any GitHub repo
-python -m agents --github tiangolo/fastapi
-
-# Private repos (set GITHUB_TOKEN)
-python -m agents --github myorg/private-api
+macro --github tiangolo/fastapi
 
 # Single-shot: generate a feature
-python -m agents "Add JWT authentication middleware" --repo ./myproject
+macro "Add JWT authentication middleware"
 
-# Multi-provider: fast agents + smart planner
-python -m agents --repo . --provider groq --planner-provider google
+# Point at a different project
+macro --repo /path/to/other/project
 
 # Auto-approve all changes
-python -m agents "Add JWT auth" --repo ./myproject --yes
+macro "Add JWT auth" --yes
 
 # Dry run — preview without writing
-python -m agents "Add health check" --repo ./myproject --dry-run
+macro "Add health check" --dry-run
 
-# See all options
-python -m agents --help
+# Multi-provider: fast agents + smart planner
+macro --provider groq --planner-provider google
 ```
 
 ### Inside Interactive Mode
@@ -121,32 +121,30 @@ print(result.generated_code)
 ```
 User Request
     |
-    |-- Project Scanner ----------------  Detects frameworks, runtime, production env
-    |-- Graph Builder ------------------  AST-based code graph (calls, imports, inheritance)
+    |-- Project Scanner ────────  Detects frameworks, runtime, production env
+    |-- Graph Builder ──────────  AST-based code graph (calls, imports, inheritance)
     |
-    |-- [Parallel Discovery] ----+
-    |   |-- Historian             |  Detects conventions, anti-patterns
-    |   |-- Architect             |  Maps structure, finds utilities
-    |   |-- Style Analyzer        |  Extracts naming, indentation, logging
-    |   |-- PR Searcher           |  Finds relevant past PRs
-    |                             |
-    |-- Clarification Handler ----+  Detects auth/framework/DB conflicts
-    |-- Impact Analyzer              Uses code graph to find affected files
-    |-- Planner ------------------+  Creates structured plan + acceptance criteria
-    |-- Alignment                    Validates plan against user intent
-    |                             
-    |-- [Implementation Loop] ---+
-    |   |-- Implementer           |  Generates code with full agent context
-    |   |-- Reviewer              |  Validates syntax, security, linting
-    |   |-- (retry if rejected)   |  Feeds errors back, re-reads plan from disk
-    |                             
-    |-- Test Generator               Auto-generates tests from plan criteria
-    |-- Safe Writer                   Shows diff, asks permission, writes files
-    |-- Shell Executor                Suggests + runs tests, lint, installs
-    |-- Pipeline Report               GitHub Actions-style dashboard + git push
+    |-- [Parallel Discovery] ──+
+    |   |-- Historian           |  Detects conventions, anti-patterns
+    |   |-- Architect           |  Maps structure, finds utilities
+    |   |-- Style Analyzer      |  Extracts naming, indentation, logging
+    |   |-- PR Searcher         |  Finds relevant past PRs
+    |                           |
+    |-- Clarification ─────────+  Detects auth/framework/DB conflicts
+    |-- Impact Analyzer            Uses code graph to find affected files
+    |-- Planner ───────────────+  Creates structured plan + acceptance criteria
+    |-- Alignment                  Validates plan against user intent
+    |                           
+    |-- [Implementation Loop] ─+
+    |   |-- Implementer         |  Generates code with full agent context
+    |   |-- Reviewer            |  Validates syntax, security, linting
+    |   |-- (retry if rejected) |  Re-reads plan from disk (Manus AI technique)
+    |                           
+    |-- Test Generator             Auto-generates tests from plan criteria
+    |-- Safe Writer                Shows diff, asks permission, writes files
+    |-- Shell Executor             Suggests + runs tests, lint, installs
+    |-- Pipeline Report            GitHub Actions-style dashboard
 ```
-
-**Key technique**: The plan is written to disk and re-read on every retry, pushing it into the LLM's recent attention window (inspired by [Manus AI](https://manus.im)).
 
 ## Supported Providers
 
@@ -166,15 +164,14 @@ Auto-detection: Set any `*_API_KEY` env var and MACRO finds the right provider.
 
 | Feature | Copilot/Cursor | Aider/Cline | Claude Code | MACRO |
 |---------|---------------|-------------|-------------|-------|
-| Style matching | File-level context | Basic context | Conversation context | **AST fingerprint** — naming, indentation, logging patterns |
-| Code graph | ✗ | ✗ | ✗ | **Yes** — deterministic AST callers, dependents, impact chains |
-| Conflict detection | ✗ | ✗ | ✗ | **Yes** — auth/framework/DB mismatches caught before planning |
-| GitHub repos | ✗ | ✗ | ✗ | **Yes** — `--github owner/repo` clones and analyzes |
-| Language detection | Manual | Manual | Auto | **Auto** — scans file extensions |
-| Provider flexibility | Locked | Some | Locked | **7 providers** — Gemini, Groq, OpenAI, Anthropic, DeepSeek, Ollama |
-| Cost | $10-500/mo | $0 (BYOK) | $20-200/mo | **$0** with free Groq/Gemini tiers |
-| Fully offline | ✗ | Partial | ✗ | **Yes** — Ollama local models, air-gapped |
-| Pipeline transparency | Black box | Visible | Visible | **12-stage pipeline** with reasoning display |
+| Zero config | ✗ | ✗ | ✗ | **Yes** — `cd project && macro` |
+| Style matching | File-level | Basic | Conversation | **AST fingerprint** |
+| Code graph | ✗ | ✗ | ✗ | **Yes** — callers, dependents, impact chains |
+| Conflict detection | ✗ | ✗ | ✗ | **Yes** — auth/framework/DB mismatches |
+| GitHub repos | ✗ | ✗ | ✗ | **Yes** — `macro --github owner/repo` |
+| Provider flexibility | Locked | Some | Locked | **7 providers** |
+| Cost | $10-500/mo | $0 (BYOK) | $20-200/mo | **$0** with free tiers |
+| Fully offline | ✗ | Partial | ✗ | **Yes** — Ollama |
 | Open source | ✗ | ✅ | ✗ | **✅** AGPL v3 |
 
 ## Project Structure
@@ -191,28 +188,25 @@ contextual-architect/
 │   ├── reviewer.py             # Security + linting
 │   ├── test_generator.py       # Test creation
 │   ├── safe_writer.py          # Permission-based file writing
-│   ├── graph_builder.py        # AST-based code relationship graph
+│   ├── graph_builder.py        # AST-based code graph
 │   ├── impact_analyzer.py      # Graph queries for affected files
 │   ├── shell_executor.py       # Sandboxed command execution
 │   ├── github_resolver.py      # --github clone + language detection
-│   ├── interactive.py          # Rich interactive CLI session
+│   ├── interactive.py          # Rich interactive CLI
 │   ├── llm_client.py           # 7 provider support
 │   ├── system_prompts.py       # Senior Engineer persona prompts
 │   └── tests/                  # 420 unit tests
 ├── data_pipeline/              # PR evolution data collection
 ├── rag/                        # RAG layer (ChromaDB + AST chunking)
 ├── docs/                       # Getting started guide
-├── examples/                   # Usage examples
-└── evaluation_harness.py       # Real-LLM testing framework
+└── examples/                   # Usage examples
 ```
 
 ## License
 
-AGPL v3 — See [LICENSE](LICENSE). You can read, modify, fork, and use MACRO for personal/educational use. Commercial SaaS use requires sharing modifications.
+AGPL v3 — See [LICENSE](LICENSE).
 
 ## Support
-
-If MACRO saves you time, consider:
 
 - ⭐ **Star this repo** — helps others find the project
 - 🐛 **Report bugs** — every issue makes MACRO better

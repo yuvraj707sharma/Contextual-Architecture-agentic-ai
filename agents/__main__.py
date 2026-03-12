@@ -23,7 +23,7 @@ from .shell_executor import ShellExecutor
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="contextual-architect",
+        prog="macro",
         description=(
             "Contextual Architect — AI that writes production-grade, "
             "enterprise-ready code by learning from project evolution."
