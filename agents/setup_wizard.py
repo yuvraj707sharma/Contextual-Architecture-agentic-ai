@@ -8,6 +8,7 @@ Guides users through:
 4. Config save + next steps
 """
 
+import asyncio
 import importlib
 import os
 import sys
@@ -179,7 +180,6 @@ def detect_existing_keys() -> list:
 def test_api_key(provider_id: str, api_key: str) -> Tuple[bool, str]:
     """Test if an API key works by making a minimal API call."""
     try:
-        import asyncio
         from .llm_client import create_llm_client
         client = create_llm_client(
             provider=provider_id,

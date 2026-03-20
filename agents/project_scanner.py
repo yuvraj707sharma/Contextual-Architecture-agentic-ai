@@ -618,7 +618,7 @@ class ProjectScanner:
                 snapshot.databases.append(db)
                 continue
 
-            if any(dep in all_deps for dep in sigs["deps"]):
+            if any(dep in all_deps for dep in sigs.get("deps", [])):
                 snapshot.databases.append(db)
                 continue
 
