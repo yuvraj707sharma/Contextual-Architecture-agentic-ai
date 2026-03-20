@@ -150,6 +150,9 @@ class ProjectSnapshot:
     runtime_version: str = ""           # "node 20", "python >=3.10"
     infra_tools: List[str] = field(default_factory=list)  # terraform, pulumi, etc.
 
+    # Package/module architecture
+    module_structure: Dict[str, List[str]] = field(default_factory=dict)  # pkg -> submodules
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "total_files": self.total_files,
@@ -178,6 +181,7 @@ class ProjectSnapshot:
             "exposed_ports": self.exposed_ports,
             "runtime_version": self.runtime_version,
             "infra_tools": self.infra_tools,
+            "module_structure": self.module_structure,
         }
 
     def to_prompt_context(self, detailed: bool = False) -> str:
@@ -362,6 +366,9 @@ class ProjectScanner:
         # CI/CD workflow parsing — extract actual test/lint commands
         self._parse_ci_workflows(snapshot)
 
+        # Module structure detection (Python packages, etc.)
+        self._detect_module_structure(snapshot)
+
         self.logger.info(
             f"Project scan: {snapshot.total_files} files, "
             f"{len(snapshot.frameworks)} frameworks, "
@@ -396,9 +403,11 @@ class ProjectScanner:
             # Skip ignored directories, but keep CI/CD dot-dirs
             dirs[:] = [
                 d for d in dirs
-                if d not in SKIP_DIRS and (
-                    not d.startswith(".") or d in KEEP_DOT_DIRS
-                )
+                if d not in SKIP_DIRS
+                and (not d.startswith(".") or d in KEEP_DOT_DIRS)
+                and not d.endswith(".egg-info")
+                # Dynamic venv detection: any dir with pyvenv.cfg is a venv
+                and not (Path(root) / d / "pyvenv.cfg").exists()
             ]
 
             rel_root = os.path.relpath(root, self.repo_path)
@@ -1043,3 +1052,58 @@ class ProjectScanner:
                 if match:
                     snapshot.ci_lint_command = match.group(1).strip()
                     break
+
+    # ── Module Structure Detection ────────────────────────
+
+    def _detect_module_structure(self, snapshot: ProjectSnapshot):
+        """Detect Python package structure for architecture display.
+
+        Finds all directories with __init__.py, groups subpackages
+        under their top-level parent. Filters non-source dirs.
+        """
+        if snapshot.language != "python":
+            return
+
+        packages = []  # list of (relative_path, depth)
+
+        for root, dirs, files in os.walk(self.repo_path):
+            # Same skip logic as main scanner
+            dirs[:] = [
+                d for d in dirs
+                if d not in SKIP_DIRS
+                and not d.startswith(".")
+                and not d.endswith(".egg-info")
+                and not (Path(root) / d / "pyvenv.cfg").exists()
+            ]
+
+            if "__init__.py" in files:
+                rel = os.path.relpath(root, self.repo_path).replace("\\", "/")
+                if rel == ".":
+                    continue
+                depth = rel.count("/")
+                packages.append((rel, depth))
+
+        if not packages:
+            return
+
+        # Group: top-level packages -> their submodules
+        # Non-source dirs to skip in architecture display
+        skip_in_display = {"test", "tests", "testing", "benchmarks", "doc", "docs",
+                           "examples", "scripts", "tools", "vendor", "bin"}
+
+        for pkg_path, depth in sorted(packages, key=lambda x: x[0]):
+            parts = pkg_path.split("/")
+            top_level = parts[0]
+
+            # Skip non-source top-level dirs
+            if top_level.lower() in skip_in_display:
+                continue
+
+            if top_level not in snapshot.module_structure:
+                snapshot.module_structure[top_level] = []
+
+            # Only add direct submodules (depth 1 relative to top-level)
+            if depth == 1:
+                submod = parts[1]
+                if submod.lower() not in skip_in_display:
+                    snapshot.module_structure[top_level].append(submod)

@@ -838,11 +838,36 @@ def _run_analyze(repo_path: str, lang: str):
         report.append("  ├── Entry Points: ", style="dim")
         report.append(f"{', '.join(snapshot.entry_points[:5])}\n")
 
-    # Architecture (top-level dirs)
-    if snapshot.dir_tree:
+    # Architecture — show package structure if available, otherwise top dirs
+    if snapshot.module_structure:
+        for pkg, submods in snapshot.module_structure.items():
+            prefix = "  ├──" if (snapshot.dir_tree or snapshot.entry_points) else "  └──"
+            report.append(f"{prefix} Package: ", style="dim")
+            if submods:
+                shown = submods[:12]
+                extra = f", +{len(submods) - 12} more" if len(submods) > 12 else ""
+                report.append(
+                    f"{pkg} ({len(submods)} modules: "
+                    f"{', '.join(shown)}{extra})\n"
+                )
+            else:
+                report.append(f"{pkg}\n")
+    elif snapshot.dir_tree:
         report.append("  └── Architecture: ", style="dim")
         top_dirs = [d for d in snapshot.dir_tree if '/' not in d and not d.startswith('.')][:10]
         report.append(f"{' → '.join(top_dirs)}\n")
+
+    # Key directories (non-package dirs)
+    if snapshot.dir_tree:
+        non_pkg_dirs = [
+            d for d in snapshot.dir_tree
+            if '/' not in d
+            and not d.startswith('.')
+            and d not in snapshot.module_structure
+        ][:8]
+        if non_pkg_dirs:
+            report.append("  └── Key dirs: ", style="dim")
+            report.append(f"{', '.join(non_pkg_dirs)}\n")
 
     # Timing
     report.append(f"\n  [dim]Scanned in {elapsed:.1f}s[/]")
@@ -855,6 +880,49 @@ def _run_analyze(repo_path: str, lang: str):
         width=width,
         padding=(0, 1),
     ))
+
+    # ── Write analysis.md to workspace ────────────────────
+    try:
+        from .workspace import Workspace
+        ws = Workspace(str(repo_path))
+        md_lines = [f"# Project Analysis: {Path(repo_path).name}\n"]
+        md_lines.append(f"- **Language**: {snapshot.language}")
+        md_lines.append(f"- **Files**: {snapshot.total_files} across {snapshot.total_dirs} directories")
+        if snapshot.frameworks:
+            md_lines.append(f"- **Frameworks**: {', '.join(snapshot.frameworks)}")
+        if snapshot.auth_systems:
+            md_lines.append(f"- **Auth**: {', '.join(snapshot.auth_systems)}")
+        if snapshot.databases:
+            md_lines.append(f"- **Database**: {', '.join(snapshot.databases)}")
+        if snapshot.test_runner:
+            md_lines.append(f"- **Test Runner**: {snapshot.test_runner}")
+            if snapshot.ci_test_command:
+                md_lines.append(f"  - Command: `{snapshot.ci_test_command}`")
+        if snapshot.ci_platform:
+            md_lines.append(f"- **CI/CD**: {snapshot.ci_platform}")
+            if snapshot.ci_workflows:
+                md_lines.append(f"  - Workflows: {', '.join(snapshot.ci_workflows)}")
+            if snapshot.ci_lint_command:
+                md_lines.append(f"  - Lint: `{snapshot.ci_lint_command}`")
+        if snapshot.build_tool:
+            md_lines.append(f"- **Build Tool**: {snapshot.build_tool}")
+        if snapshot.module_structure:
+            md_lines.append("\n## Package Architecture\n")
+            for pkg, submods in snapshot.module_structure.items():
+                md_lines.append(f"### `{pkg}` ({len(submods)} submodules)\n")
+                if submods:
+                    md_lines.append(f"{', '.join(submods)}\n")
+        if snapshot.config_files:
+            md_lines.append("\n## Config Files\n")
+            for cf in snapshot.config_files[:15]:
+                md_lines.append(f"- `{cf}`")
+
+        analysis_md = "\n".join(md_lines) + "\n"
+        report_path = ws.workspace_path / "reports" / "analysis.md"
+        report_path.write_text(analysis_md, encoding="utf-8")
+        console.print("\n  [dim]📄 Report saved: .contextual-architect/reports/analysis.md[/]\n")
+    except Exception:
+        pass  # Non-critical — don't crash if report writing fails
 
     return snapshot
 
