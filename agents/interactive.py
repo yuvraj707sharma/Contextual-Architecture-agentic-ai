@@ -32,6 +32,7 @@ from .config import AgentConfig
 from .graph_builder import GraphBuilder
 from .llm_client import create_llm_client, detect_provider_from_env
 from .orchestrator import OrchestrationResult, Orchestrator
+from .pr_researcher import PRResearcher
 from .project_scanner import ProjectScanner
 from .style_fingerprint import StyleAnalyzer
 
@@ -137,6 +138,8 @@ def print_help():
     cmd_table.add_column(style="dim")
     cmd_table.add_row("/analyze", "Deep-scan the project (frameworks, CI, style, graph)")
     cmd_table.add_row("/rules <text>", "Set session rules (e.g. GSoC constraints)")
+    cmd_table.add_row("/gsoc", "Toggle GSoC mode (skip test gen, run existing tests)")
+    cmd_table.add_row("/research <owner/repo>", "Research PR patterns from GitHub")
     cmd_table.add_row("help", "Show this help message")
     cmd_table.add_row("exit / quit", "End the session")
     cmd_table.add_row("status", "Show current configuration")
@@ -699,6 +702,7 @@ def _run_analyze(repo_path: str, lang: str):
 
     Runs: ProjectScanner + StyleAnalyzer + GraphBuilder
     Displays: structured tree of project characteristics.
+    Returns: the ProjectSnapshot for caching CI commands.
     """
     import time as _time
 
@@ -852,6 +856,7 @@ def _run_analyze(repo_path: str, lang: str):
         padding=(0, 1),
     ))
 
+    return snapshot
 
 async def run_single_request(
     request: str,
@@ -861,6 +866,8 @@ async def run_single_request(
     llm_client,
     verbose: bool = False,
     user_pseudocode: str = None,
+    skip_test_generation: bool = False,
+    run_existing_tests: str = "",
 ) -> Optional[OrchestrationResult]:
     """Run a single request through the pipeline."""
     from .__main__ import print_result
@@ -873,6 +880,8 @@ async def run_single_request(
             repo_path=repo_path,
             language=lang,
             user_pseudocode=user_pseudocode,
+            skip_test_generation=skip_test_generation,
+            run_existing_tests=run_existing_tests,
         )
         print_result(result, orchestrator)
         return result
@@ -984,6 +993,8 @@ async def interactive_session(args) -> int:
     request_count = 0
     session_rules = ""   # persistent context set by /rules
     analysis_done = False  # tracks if /analyze has been run
+    gsoc_mode = False      # when True, skip test gen + run existing tests
+    ci_test_cmd = ""       # cached from /analyze
 
     def _print_footer():
         """Print the persistent footer status bar."""
@@ -1051,10 +1062,162 @@ async def interactive_session(args) -> int:
                 # ── Deep Project Analysis ──────────────────
                 console.print("\n  [bold cyan]◆ Deep Analysis[/] [dim]scanning...[/]")
                 try:
-                    _run_analyze(repo_path, lang)
+                    snapshot = _run_analyze(repo_path, lang)
                     analysis_done = True
+                    # Cache CI test command for smart test handling
+                    if snapshot and hasattr(snapshot, 'ci_test_command') and snapshot.ci_test_command:
+                        ci_test_cmd = snapshot.ci_test_command
                 except Exception as e:
                     console.print(f"  [bold red]❌ Analysis error:[/] {e}")
+                console.print()
+                continue
+
+            elif cmd == "/gsoc":
+                # ── Toggle GSoC Mode ──────────────────────
+                gsoc_mode = not gsoc_mode
+                if gsoc_mode:
+                    console.print("\n  [bold green]✅ GSoC mode ON[/]")
+                    console.print("  [dim]│ Test generation: DISABLED (uses project's tests)[/]")
+                    console.print(f"  [dim]│ Test command: {ci_test_cmd or 'auto-detect or set via /analyze'}[/]")
+                    console.print("  [dim]│ All code will be validated against existing CI[/]")
+                else:
+                    console.print("\n  [bold yellow]❌ GSoC mode OFF[/]")
+                    console.print("  [dim]│ Test generation: ENABLED (auto-generates tests)[/]")
+                console.print()
+                continue
+
+            elif cmd.startswith("/research ") or cmd.startswith("research "):
+                # ── Live PR Research ──────────────────────
+                slug = user_input[user_input.index(' ') + 1:].strip()
+                if '/' not in slug:
+                    # Try to detect from git remote
+                    try:
+                        import subprocess as _sp
+                        remote = _sp.run(
+                            ['git', 'remote', 'get-url', 'origin'],
+                            cwd=repo_path,
+                            capture_output=True, text=True, timeout=5,
+                        )
+                        if remote.returncode == 0:
+                            url = remote.stdout.strip()
+                            match = re.search(
+                                r'github\.com[:/]([^/]+/[^/.]+)', url
+                            )
+                            if match:
+                                slug = match.group(1)
+                    except Exception:
+                        pass
+
+                if '/' not in slug:
+                    console.print("\n  [yellow]Usage: /research owner/repo[/]")
+                    console.print("  [dim]Example: /research pallets/flask[/]")
+                    console.print()
+                    continue
+
+                console.print(
+                    f"\n  [bold cyan]◆ PR Research[/] "
+                    f"[dim]fetching from {slug}...[/]"
+                )
+                try:
+                    researcher = PRResearcher()
+                    patterns = researcher.analyze(
+                        slug, limit=15, fetch_files=True
+                    )
+                    if patterns.total_prs_analyzed > 0:
+                        width = min(
+                            shutil.get_terminal_size().columns - 4, 80
+                        )
+                        report = Text()
+                        report.append(
+                            "  🔍 Contribution Patterns for ",
+                            style="bold",
+                        )
+                        report.append(f"{slug}\n", style="bold cyan")
+                        report.append(
+                            "  ├── PRs analyzed: ", style="dim"
+                        )
+                        report.append(
+                            f"{patterns.total_prs_analyzed}\n"
+                        )
+                        report.append(
+                            "  ├── Avg PR size: ", style="dim"
+                        )
+                        report.append(
+                            f"+{patterns.avg_additions:.0f}/"
+                            f"-{patterns.avg_deletions:.0f} lines, "
+                            f"{patterns.avg_files_per_pr:.1f} files\n"
+                        )
+                        report.append("  ├── Tests: ", style="dim")
+                        report.append(
+                            "✅ expected"
+                            if patterns.test_required
+                            else "➖ optional",
+                            style=(
+                                "green"
+                                if patterns.test_required
+                                else "yellow"
+                            ),
+                        )
+                        report.append("\n")
+                        report.append("  ├── Docs: ", style="dim")
+                        report.append(
+                            "✅ expected"
+                            if patterns.docs_required
+                            else "➖ optional",
+                            style=(
+                                "green"
+                                if patterns.docs_required
+                                else "yellow"
+                            ),
+                        )
+                        report.append("\n")
+                        report.append(
+                            "  ├── Commit style: ", style="dim"
+                        )
+                        report.append(f"{patterns.commit_style}\n")
+                        if patterns.frequently_changed_dirs:
+                            report.append(
+                                "  ├── Hot dirs: ", style="dim"
+                            )
+                            dirs = patterns.frequently_changed_dirs[:6]
+                            report.append(f"{', '.join(dirs)}\n")
+                        if patterns.common_labels:
+                            report.append(
+                                "  ├── Labels: ", style="dim"
+                            )
+                            labels = patterns.common_labels[:5]
+                            report.append(f"{', '.join(labels)}\n")
+                        if patterns.top_contributors:
+                            report.append(
+                                "  ├── Top contributors: ",
+                                style="dim",
+                            )
+                            contribs = patterns.top_contributors[:4]
+                            report.append(f"{', '.join(contribs)}\n")
+                        if patterns.top_reviewers:
+                            report.append(
+                                "  └── Top reviewers: ", style="dim"
+                            )
+                            revs = patterns.top_reviewers[:4]
+                            report.append(f"{', '.join(revs)}\n")
+
+                        console.print(Panel(
+                            report,
+                            title="[bold cyan]PR Research[/]",
+                            border_style="cyan",
+                            box=box.ROUNDED,
+                            width=width,
+                            padding=(0, 1),
+                        ))
+                    else:
+                        console.print(
+                            "  [yellow]No merged PRs found. "
+                            "Check the repo slug.[/]"
+                        )
+                except Exception as e:
+                    console.print(
+                        f"  [bold red]❌ Research error:[/] {e}"
+                    )
                 console.print()
                 continue
 
@@ -1094,6 +1257,9 @@ async def interactive_session(args) -> int:
                     status_table.add_row("Implementer", config.implementer_provider)
                 status_table.add_row("Requests", str(request_count))
                 status_table.add_row("Analyzed", "✅" if analysis_done else "❌ (run /analyze)")
+                status_table.add_row("GSoC Mode", "✅ ON" if gsoc_mode else "❌ OFF (/gsoc to toggle)")
+                if ci_test_cmd:
+                    status_table.add_row("Test Cmd", ci_test_cmd)
                 if session_rules:
                     status_table.add_row("Rules", session_rules[:80] + ("..." if len(session_rules) > 80 else ""))
                 width = min(shutil.get_terminal_size().columns - 4, 80)
@@ -1153,7 +1319,20 @@ async def interactive_session(args) -> int:
                     llm_client=llm_client,
                     verbose=verbose,
                     user_pseudocode=user_pseudocode,
+                    skip_test_generation=gsoc_mode,
+                    run_existing_tests=ci_test_cmd if gsoc_mode else "",
                 )
+
+                # Show existing test results if available
+                if result and result.context.get("existing_test_results"):
+                    tr = result.context["existing_test_results"]
+                    if tr.get("passed"):
+                        console.print(f"  [bold green]✅ Project tests passed:[/] {tr['command']}")
+                    else:
+                        console.print(f"  [bold red]❌ Project tests failed:[/] {tr['command']}")
+                        stderr = tr.get('stderr', '')
+                        if stderr:
+                            console.print(f"  [dim]{stderr[:300]}[/]")
 
                 # Pseudocode alignment check (if pseudocode was provided)
                 if user_pseudocode and result and result.generated_code:

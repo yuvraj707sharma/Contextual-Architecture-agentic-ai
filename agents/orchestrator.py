@@ -222,6 +222,8 @@ class Orchestrator:
         repo_path: str,
         language: str = "python",
         user_pseudocode: str = None,
+        skip_test_generation: bool = False,
+        run_existing_tests: str = "",
     ) -> OrchestrationResult:
         """
         Run the full orchestration pipeline.
@@ -844,7 +846,7 @@ class Orchestrator:
                     )
 
         # ── TEST GENERATION PHASE ────────────────────────────────
-        if result.generated_code:
+        if result.generated_code and not skip_test_generation:
             self.reasoning.emit("test_generator", "Generating tests for the implementation...")
             self.logger.info(
                 "Running Test Generator",
@@ -866,6 +868,12 @@ class Orchestrator:
                     generated_files[test_file] = test_code
             else:
                 generated_files = {result.target_file: result.generated_code}
+        elif result.generated_code and skip_test_generation:
+            self.reasoning.emit(
+                "test_generator",
+                "Skipped — using project's existing tests instead",
+            )
+            generated_files = {result.target_file: result.generated_code}
 
         # ── SAFE WRITER PHASE ─────────────────────────────────────
         if result.generated_code:
@@ -913,6 +921,59 @@ class Orchestrator:
                     )
             except Exception as e:
                 self.logger.debug(f"Post-write suggestions skipped: {e}")
+
+        # ── RUN EXISTING TESTS (when skip_test_generation is enabled) ─────
+        if result.generated_code and run_existing_tests:
+            self.reasoning.emit(
+                "test_runner",
+                f"Running project tests: {run_existing_tests}",
+            )
+            try:
+                import subprocess
+                test_proc = subprocess.run(
+                    run_existing_tests,
+                    shell=True,
+                    cwd=repo_path,
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                )
+                test_passed = test_proc.returncode == 0
+                test_output = (test_proc.stdout or "")[-2000:]  # last 2000 chars
+                test_stderr = (test_proc.stderr or "")[-1000:]
+
+                result.context["existing_test_results"] = {
+                    "command": run_existing_tests,
+                    "passed": test_passed,
+                    "return_code": test_proc.returncode,
+                    "output": test_output,
+                    "stderr": test_stderr,
+                }
+
+                if test_passed:
+                    self.reasoning.emit(
+                        "test_runner",
+                        f"✅ Tests passed: {run_existing_tests}",
+                    )
+                else:
+                    self.reasoning.emit(
+                        "test_runner",
+                        f"❌ Tests failed (exit code {test_proc.returncode})",
+                    )
+                    self.logger.warning(
+                        f"Existing tests failed: {test_stderr[:200]}",
+                        extra={"agent": "test_runner"},
+                    )
+            except subprocess.TimeoutExpired:
+                self.reasoning.emit("test_runner", "⏰ Tests timed out (120s)")
+                result.context["existing_test_results"] = {
+                    "command": run_existing_tests,
+                    "passed": False,
+                    "error": "Timed out after 120 seconds",
+                }
+            except Exception as e:
+                self.logger.debug(f"Existing test execution failed: {e}")
+                self.reasoning.emit("test_runner", f"Test execution error: {e}")
 
         # ── PIPELINE REPORT (GitHub-style Dashboard) ─────────────
         # Generate a formatted report showing the user everything:
