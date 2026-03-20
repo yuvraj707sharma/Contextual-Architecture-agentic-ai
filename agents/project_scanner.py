@@ -303,6 +303,7 @@ class ProjectScanner:
         self.max_files = max_files  # Safety cap — stops scanning after this many files
         self.logger = get_logger("scanner")
         self._all_imports: set = set()
+        self._core_imports: set = set()  # imports from non-test/doc/example files
         self._all_file_content_cache: Dict[str, str] = {}
         self._cache_total_bytes: int = 0
         self._cache_max_bytes: int = 5 * 1024 * 1024  # 5MB total cap
@@ -520,8 +521,40 @@ class ProjectScanner:
 
     # ── Import Scanning ──────────────────────────────────
 
+    # Paths that indicate test/doc/example files — imports from these
+    # should NOT count toward framework/auth/database detection.
+    _NON_CORE_PATH_PARTS = {
+        "test", "tests", "testing", "test_", "_test",
+        "doc", "docs", "documentation",
+        "example", "examples", "sample", "samples",
+        "benchmark", "benchmarks",
+        "vendor", "third_party", "node_modules",
+        "__pycache__", ".tox", ".nox",
+    }
+
+    def _is_non_core_path(self, rel_path: str) -> bool:
+        """Check if a file path is in a test/doc/example directory."""
+        parts = Path(rel_path).parts
+        name = Path(rel_path).name.lower()
+        # Check directory components
+        for part in parts[:-1]:  # exclude filename
+            if part.lower() in self._NON_CORE_PATH_PARTS:
+                return True
+        # Check filename patterns like test_foo.py, foo_test.py
+        if name.startswith("test_") or name.endswith("_test.py"):
+            return True
+        # bin/test_*.py pattern (common in sympy, etc.)
+        if len(parts) >= 2 and parts[0].lower() == "bin" and name.startswith("test"):
+            return True
+        return False
+
     def _scan_imports(self, snapshot: ProjectSnapshot):
-        """Scan source files for import statements."""
+        """Scan source files for import statements.
+
+        Populates self._all_imports (all imports) and
+        self._core_imports (imports from non-test/doc/example files).
+        Framework detection uses _core_imports to avoid false positives.
+        """
         code_extensions = {".py", ".js", ".ts", ".tsx", ".jsx", ".go", ".java"}
 
         for entry in snapshot.file_tree:
@@ -531,6 +564,7 @@ class ProjectScanner:
             if entry.size_bytes > 500_000:  # Skip huge files
                 continue
 
+            is_core = not self._is_non_core_path(entry.path)
             fpath = self.repo_path / entry.path
             try:
                 content = fpath.read_text(encoding="utf-8", errors="ignore")
@@ -541,38 +575,45 @@ class ProjectScanner:
                     self._cache_total_bytes += len(snippet)
 
                 # Extract imports
+                file_imports = set()
                 if ext == ".py":
                     # Python: import X, from X import Y
-                    imports = re.findall(r'^\s*(?:import|from)\s+([a-zA-Z0-9_.]+)', content, re.MULTILINE)
-                    self._all_imports.update(imports)
+                    file_imports = set(re.findall(r'^\s*(?:import|from)\s+([a-zA-Z0-9_.]+)', content, re.MULTILINE))
                 elif ext in (".js", ".ts", ".tsx", ".jsx"):
                     # JS/TS: import ... from "X", require("X")
-                    imports = re.findall(r'(?:from|require\()\s*["\']([^"\']+)', content)
-                    self._all_imports.update(imports)
+                    file_imports = set(re.findall(r'(?:from|require\()\s*["\']([^"\']+)', content))
                 elif ext == ".go":
                     # Go: import "X"
-                    imports = re.findall(r'import\s+(?:\(([^)]+)\)|"([^"]+)")', content, re.DOTALL)
-                    for group_imports, single_import in imports:
+                    raw = re.findall(r'import\s+(?:\(([^)]+)\)|"([^"]+)")', content, re.DOTALL)
+                    for group_imports, single_import in raw:
                         if single_import:
-                            self._all_imports.add(single_import)
+                            file_imports.add(single_import)
                         if group_imports:
                             for line in group_imports.splitlines():
                                 match = re.search(r'"([^"]+)"', line)
                                 if match:
-                                    self._all_imports.add(match.group(1))
+                                    file_imports.add(match.group(1))
+
+                self._all_imports.update(file_imports)
+                if is_core:
+                    self._core_imports.update(file_imports)
             except OSError:
                 pass
 
     # ── Framework Detection ──────────────────────────────
 
     def _detect_frameworks(self, snapshot: ProjectSnapshot):
-        """Detect frameworks from imports and dependencies."""
+        """Detect frameworks from core imports and dependencies.
+
+        Uses _core_imports (excludes test/doc/example files) to avoid
+        false positives like detecting 'pytorch' because of bin/test_pytorch.py.
+        """
         all_deps = set(snapshot.dependencies.keys()) | set(snapshot.dev_dependencies.keys())
 
         for framework, sigs in FRAMEWORK_SIGNATURES.items():
-            # Check imports
-            if any(imp in self._all_imports or
-                   any(imp in i for i in self._all_imports)
+            # Check core imports only (not test/doc/example files)
+            if any(imp in self._core_imports or
+                   any(imp in i for i in self._core_imports)
                    for imp in sigs["imports"]):
                 snapshot.frameworks.append(framework)
                 continue
@@ -589,9 +630,9 @@ class ProjectScanner:
         all_files = {e.path.lower() for e in snapshot.file_tree}
 
         for auth, sigs in AUTH_SIGNATURES.items():
-            # Check imports
-            if any(imp in self._all_imports or
-                   any(imp in i for i in self._all_imports)
+            # Check core imports only
+            if any(imp in self._core_imports or
+                   any(imp in i for i in self._core_imports)
                    for imp in sigs["imports"]):
                 snapshot.auth_systems.append(auth)
                 continue
@@ -612,8 +653,8 @@ class ProjectScanner:
         all_deps = set(snapshot.dependencies.keys()) | set(snapshot.dev_dependencies.keys())
 
         for db, sigs in DB_SIGNATURES.items():
-            if any(imp in self._all_imports or
-                   any(imp in i for i in self._all_imports)
+            if any(imp in self._core_imports or
+                   any(imp in i for i in self._core_imports)
                    for imp in sigs["imports"]):
                 snapshot.databases.append(db)
                 continue
