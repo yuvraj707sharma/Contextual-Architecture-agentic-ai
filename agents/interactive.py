@@ -29,8 +29,11 @@ from rich.table import Table
 from rich.text import Text
 
 from .config import AgentConfig
+from .graph_builder import GraphBuilder
 from .llm_client import create_llm_client, detect_provider_from_env
 from .orchestrator import OrchestrationResult, Orchestrator
+from .project_scanner import ProjectScanner
+from .style_fingerprint import StyleAnalyzer
 
 # Rich console — shared instance
 console = Console()
@@ -132,6 +135,8 @@ def print_help():
     cmd_table = Table(show_header=False, box=None, padding=(0, 2, 0, 0))
     cmd_table.add_column(style="cyan bold", no_wrap=True)
     cmd_table.add_column(style="dim")
+    cmd_table.add_row("/analyze", "Deep-scan the project (frameworks, CI, style, graph)")
+    cmd_table.add_row("/rules <text>", "Set session rules (e.g. GSoC constraints)")
     cmd_table.add_row("help", "Show this help message")
     cmd_table.add_row("exit / quit", "End the session")
     cmd_table.add_row("status", "Show current configuration")
@@ -689,6 +694,165 @@ def _print_write_report(report: dict):
     console.print()
 
 
+def _run_analyze(repo_path: str, lang: str):
+    """Run deep project analysis and display a rich report.
+
+    Runs: ProjectScanner + StyleAnalyzer + GraphBuilder
+    Displays: structured tree of project characteristics.
+    """
+    import time as _time
+
+    width = min(shutil.get_terminal_size().columns - 4, 80)
+
+    t0 = _time.monotonic()
+
+    # ── Step 1: Project Scanner ──────────────────────────
+    console.print("  [dim]  ├ Scanning project structure...[/]")
+    scanner = ProjectScanner(repo_path, language=lang)
+    snapshot = scanner.scan()
+
+    # ── Step 2: Style Analysis ───────────────────────────
+    console.print("  [dim]  ├ Fingerprinting coding style...[/]")
+    try:
+        style = StyleAnalyzer()
+        style_result = style.analyze(repo_path, lang)
+    except Exception:
+        style_result = {}
+
+    # ── Step 3: Code Graph ───────────────────────────────
+    console.print("  [dim]  ├ Building dependency graph...[/]")
+    try:
+        graph = GraphBuilder(repo_path)
+        graph_data = graph.build()
+        nodes = graph_data.get("nodes", 0) if isinstance(graph_data, dict) else 0
+        edges = graph_data.get("edges", 0) if isinstance(graph_data, dict) else 0
+    except Exception:
+        nodes, edges = 0, 0
+
+    elapsed = _time.monotonic() - t0
+
+    # ── Build the report ─────────────────────────────────
+    report = Text()
+    report.append("  📊 Deep Analysis of ", style="bold")
+    report.append(f"{Path(repo_path).name}\n", style="bold cyan")
+    report.append("  ├── Language: ", style="dim")
+    report.append(f"{snapshot.language or lang}\n")
+
+    # File stats
+    report.append("  ├── Files: ", style="dim")
+    report.append(f"{snapshot.total_files} across {snapshot.total_dirs} directories\n")
+
+    # Frameworks
+    if snapshot.frameworks:
+        report.append("  ├── Frameworks: ", style="dim")
+        report.append(f"{', '.join(snapshot.frameworks)}\n", style="green")
+
+    # Auth
+    if snapshot.auth_systems:
+        report.append("  ├── Auth: ", style="dim")
+        report.append(f"{', '.join(snapshot.auth_systems)}\n")
+
+    # Database
+    if snapshot.databases:
+        report.append("  ├── Database: ", style="dim")
+        report.append(f"{', '.join(snapshot.databases)}\n")
+
+    # Package manager
+    if snapshot.package_manager:
+        report.append("  ├── Package Manager: ", style="dim")
+        report.append(f"{snapshot.package_manager}\n")
+
+    # Test runner
+    if snapshot.test_runner:
+        report.append("  ├── Tests: ", style="dim")
+        report.append(f"{snapshot.test_runner}", style="green")
+        if snapshot.ci_test_command:
+            report.append(" → ", style="dim")
+            report.append(f"{snapshot.ci_test_command}", style="cyan")
+        report.append("\n")
+
+    # CI/CD
+    if snapshot.has_ci:
+        report.append("  ├── CI/CD: ", style="dim")
+        report.append(f"{snapshot.ci_platform}", style="yellow")
+        if snapshot.ci_workflows:
+            report.append(f" ({', '.join(snapshot.ci_workflows)})", style="dim")
+        report.append("\n")
+        if snapshot.ci_lint_command:
+            report.append("  │   ├── Lint: ", style="dim")
+            report.append(f"{snapshot.ci_lint_command}\n", style="cyan")
+        if snapshot.ci_test_command:
+            report.append("  │   └── Test: ", style="dim")
+            report.append(f"{snapshot.ci_test_command}\n", style="cyan")
+
+    # Style
+    if style_result:
+        report.append("  ├── Style: ", style="dim")
+        style_parts = []
+        if isinstance(style_result, dict):
+            naming = style_result.get("naming_convention", "")
+            if naming:
+                style_parts.append(naming)
+            indent = style_result.get("indent_style", "")
+            if indent:
+                style_parts.append(indent)
+            docstring = style_result.get("docstring_style", "")
+            if docstring:
+                style_parts.append(f"{docstring} docstrings")
+        report.append(f"{', '.join(style_parts) if style_parts else 'detected'}\n")
+
+    # Code graph
+    if nodes > 0:
+        report.append("  ├── Code Graph: ", style="dim")
+        report.append(f"{nodes} nodes, {edges} edges\n")
+
+    # Build tool
+    if snapshot.build_tool:
+        report.append("  ├── Build Tool: ", style="dim")
+        report.append(f"{snapshot.build_tool}\n")
+
+    # Runtime
+    if snapshot.runtime_version:
+        report.append("  ├── Runtime: ", style="dim")
+        report.append(f"{snapshot.runtime_version}\n")
+
+    # Deployment
+    if snapshot.deployment_platform:
+        report.append("  ├── Deployment: ", style="dim")
+        report.append(f"{snapshot.deployment_platform}\n")
+
+    # Docker
+    if snapshot.has_docker:
+        report.append("  ├── Docker: ", style="dim")
+        report.append("Yes")
+        if snapshot.docker_base_image:
+            report.append(f" ({snapshot.docker_base_image})", style="dim")
+        report.append("\n")
+
+    # Entry points
+    if snapshot.entry_points:
+        report.append("  ├── Entry Points: ", style="dim")
+        report.append(f"{', '.join(snapshot.entry_points[:5])}\n")
+
+    # Architecture (top-level dirs)
+    if snapshot.dir_tree:
+        report.append("  └── Architecture: ", style="dim")
+        top_dirs = [d for d in snapshot.dir_tree if '/' not in d and not d.startswith('.')][:10]
+        report.append(f"{' → '.join(top_dirs)}\n")
+
+    # Timing
+    report.append(f"\n  [dim]Scanned in {elapsed:.1f}s[/]")
+
+    console.print(Panel(
+        report,
+        title="[bold cyan]Project Analysis[/]",
+        border_style="cyan",
+        box=box.ROUNDED,
+        width=width,
+        padding=(0, 1),
+    ))
+
+
 async def run_single_request(
     request: str,
     repo_path: str,
@@ -818,6 +982,8 @@ async def interactive_session(args) -> int:
 
     # Track session
     request_count = 0
+    session_rules = ""   # persistent context set by /rules
+    analysis_done = False  # tracks if /analyze has been run
 
     def _print_footer():
         """Print the persistent footer status bar."""
@@ -881,6 +1047,39 @@ async def interactive_session(args) -> int:
                 print_banner(repo_path, provider, lang, config)
                 continue
 
+            elif cmd == "/analyze" or cmd == "analyze":
+                # ── Deep Project Analysis ──────────────────
+                console.print("\n  [bold cyan]◆ Deep Analysis[/] [dim]scanning...[/]")
+                try:
+                    _run_analyze(repo_path, lang)
+                    analysis_done = True
+                except Exception as e:
+                    console.print(f"  [bold red]❌ Analysis error:[/] {e}")
+                console.print()
+                continue
+
+            elif cmd.startswith("/rules ") or cmd.startswith("rules "):
+                # ── Session Rules ──────────────────────────
+                rules_text = user_input[user_input.index(' ') + 1:].strip()
+                if rules_text:
+                    session_rules = rules_text
+                    console.print("\n  [bold green]✅ Session rules saved.[/]")
+                    console.print(f"  [dim]{rules_text[:200]}{'...' if len(rules_text) > 200 else ''}[/]")
+                    console.print("  [dim]All builds will follow these constraints.[/]")
+                else:
+                    console.print("\n  [yellow]Usage: /rules <your constraints>[/]")
+                console.print()
+                continue
+
+            elif cmd == "/rules":
+                if session_rules:
+                    console.print("\n  [bold]Active rules:[/]")
+                    console.print(f"  [dim]{session_rules}[/]")
+                else:
+                    console.print("\n  [dim]No rules set. Use /rules <text> to set constraints.[/]")
+                console.print()
+                continue
+
             elif cmd == "status":
                 status_table = Table(show_header=False, box=None, padding=(0, 2, 0, 0))
                 status_table.add_column(style="bold cyan", no_wrap=True)
@@ -894,6 +1093,9 @@ async def interactive_session(args) -> int:
                 if config.implementer_provider:
                     status_table.add_row("Implementer", config.implementer_provider)
                 status_table.add_row("Requests", str(request_count))
+                status_table.add_row("Analyzed", "✅" if analysis_done else "❌ (run /analyze)")
+                if session_rules:
+                    status_table.add_row("Rules", session_rules[:80] + ("..." if len(session_rules) > 80 else ""))
                 width = min(shutil.get_terminal_size().columns - 4, 80)
                 console.print(Panel(
                     status_table, title="[bold]Status[/]",
@@ -924,6 +1126,10 @@ async def interactive_session(args) -> int:
 
             # ── Intent Detection ──────────────────────────
             intent = detect_intent(user_input)
+
+            # Prepend session rules to the request if set
+            if session_rules and intent != 'chat':
+                request = f"[SESSION RULES: {session_rules}]\n\n{request}"
 
             if intent == 'chat':
                 # Chat mode — answer question using LLM

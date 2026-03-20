@@ -127,6 +127,9 @@ class ProjectSnapshot:
     has_docker: bool = False
     has_ci: bool = False
     ci_platform: str = ""  # "github_actions", "gitlab_ci", etc.
+    ci_test_command: str = ""       # e.g. "pytest tests/ -v"
+    ci_lint_command: str = ""       # e.g. "ruff check ."
+    ci_workflows: List[str] = field(default_factory=list)  # workflow file names
 
     # Build system
     package_manager: str = ""  # npm, yarn, pnpm, pip, poetry, uv
@@ -354,6 +357,9 @@ class ProjectScanner:
         self._parse_dockerfile(snapshot)
         self._detect_runtime_version(snapshot)
         self._detect_infra_tools(snapshot)
+
+        # CI/CD workflow parsing — extract actual test/lint commands
+        self._parse_ci_workflows(snapshot)
 
         self.logger.info(
             f"Project scan: {snapshot.total_files} files, "
@@ -913,3 +919,86 @@ class ProjectScanner:
                         snapshot.config_files.append(fname)
                     break
 
+    def _parse_ci_workflows(self, snapshot: ProjectSnapshot):
+        """Parse GitHub Actions / GitLab CI workflow files to extract test and lint commands."""
+        # GitHub Actions
+        workflows_dir = self.repo_path / ".github" / "workflows"
+        if workflows_dir.is_dir():
+            for wf_file in workflows_dir.iterdir():
+                if wf_file.suffix in (".yml", ".yaml"):
+                    snapshot.ci_workflows.append(wf_file.name)
+                    try:
+                        content = wf_file.read_text(encoding="utf-8", errors="ignore")
+                        self._extract_ci_commands(content, snapshot)
+                    except OSError:
+                        pass
+
+        # GitLab CI
+        gitlab_ci = self.repo_path / ".gitlab-ci.yml"
+        if gitlab_ci.exists():
+            snapshot.ci_workflows.append(".gitlab-ci.yml")
+            try:
+                content = gitlab_ci.read_text(encoding="utf-8", errors="ignore")
+                self._extract_ci_commands(content, snapshot)
+            except OSError:
+                pass
+
+        # Makefile test/lint targets
+        makefile = self.repo_path / "Makefile"
+        if makefile.exists() and not snapshot.ci_test_command:
+            try:
+                content = makefile.read_text(encoding="utf-8", errors="ignore")
+                # Look for test: or lint: targets
+                test_match = re.search(r'^test[:\s].*\n\t(.+)', content, re.MULTILINE)
+                if test_match:
+                    snapshot.ci_test_command = test_match.group(1).strip()
+                lint_match = re.search(r'^lint[:\s].*\n\t(.+)', content, re.MULTILINE)
+                if lint_match:
+                    snapshot.ci_lint_command = lint_match.group(1).strip()
+            except OSError:
+                pass
+
+        # tox.ini
+        tox_ini = self.repo_path / "tox.ini"
+        if tox_ini.exists() and not snapshot.ci_test_command:
+            snapshot.ci_test_command = "tox"
+
+    def _extract_ci_commands(self, content: str, snapshot: ProjectSnapshot):
+        """Extract test and lint commands from CI workflow YAML content."""
+        # Look for common test command patterns in 'run:' lines
+        test_patterns = [
+            r'run:\s*(pytest[^\n]*)',
+            r'run:\s*(python -m pytest[^\n]*)',
+            r'run:\s*(npm test[^\n]*)',
+            r'run:\s*(npm run test[^\n]*)',
+            r'run:\s*(yarn test[^\n]*)',
+            r'run:\s*(go test[^\n]*)',
+            r'run:\s*(cargo test[^\n]*)',
+            r'run:\s*(make test[^\n]*)',
+            r'run:\s*(tox[^\n]*)',
+        ]
+        lint_patterns = [
+            r'run:\s*(ruff check[^\n]*)',
+            r'run:\s*(ruff[^\n]*)',
+            r'run:\s*(flake8[^\n]*)',
+            r'run:\s*(pylint[^\n]*)',
+            r'run:\s*(mypy[^\n]*)',
+            r'run:\s*(eslint[^\n]*)',
+            r'run:\s*(npm run lint[^\n]*)',
+            r'run:\s*(golangci-lint[^\n]*)',
+            r'run:\s*(cargo clippy[^\n]*)',
+        ]
+
+        if not snapshot.ci_test_command:
+            for pattern in test_patterns:
+                match = re.search(pattern, content, re.IGNORECASE)
+                if match:
+                    snapshot.ci_test_command = match.group(1).strip()
+                    break
+
+        if not snapshot.ci_lint_command:
+            for pattern in lint_patterns:
+                match = re.search(pattern, content, re.IGNORECASE)
+                if match:
+                    snapshot.ci_lint_command = match.group(1).strip()
+                    break
