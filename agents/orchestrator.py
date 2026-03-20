@@ -688,39 +688,66 @@ class Orchestrator:
             result.agent_summaries["alignment"] = align_response.summary
 
         # ── READ EXISTING FILE CONTENTS FOR IMPLEMENTER ────────────
-        # Read content of files the Implementer should know about:
-        # 1. MODIFY targets from the plan
-        # 2. Files referenced in the user's request
-        # 3. Architect-suggested target files that exist
+        # Read content of files the Implementer should know about.
+        # Priority order (highest first):
+        # 1. MODIFY targets from the plan (what we're changing)
+        # 2. Graph-impacted files (callers/callees of targets)
+        # 3. Files referenced in the user's request
+        # 4. Architect-suggested target files
+        # 5. Key project files (README, CONTRIBUTING, config)
+        # 6. Test files matching MODIFY targets
         existing_file_contents = {}
 
-        def _try_read(file_path: str):
-            """Read a file if it exists, cap at 3000 chars."""
+        # Context budget — prevent overloading smaller LLMs
+        _FILE_CAP = 6000       # max chars per file (up from 3000)
+        _TOTAL_BUDGET = 50_000  # max total chars across all files (~12K tokens)
+
+        def _total_chars() -> int:
+            return sum(len(c) for c in existing_file_contents.values())
+
+        def _try_read(file_path: str) -> bool:
+            """Read a file if it exists, cap at _FILE_CAP chars.
+
+            Returns True if the file was read, False otherwise.
+            Respects the total context budget.
+            """
             if file_path in existing_file_contents:
-                return  # Already read
+                return False  # Already read
+            if _total_chars() >= _TOTAL_BUDGET:
+                return False  # Budget exhausted
             full_path = Path(repo_path) / file_path
             if full_path.exists() and full_path.is_file():
                 try:
                     content = full_path.read_text(encoding="utf-8", errors="ignore")
-                    if len(content) > 3000:
-                        content = content[:3000] + "\n# ... (truncated) ..."
+                    if len(content) > _FILE_CAP:
+                        content = content[:_FILE_CAP] + "\n# ... (truncated) ..."
                     existing_file_contents[file_path] = content
+                    return True
                 except Exception:
                     pass
+            return False
 
-        # Source 1: MODIFY targets from the plan
+        # Source 1: MODIFY targets from the plan (highest priority)
         plan_data = context.prior_context.get("plan", {})
         target_files_list = plan_data.get("target_files", [])
         if not target_files_list and isinstance(planner_response.data, dict):
             target_files_list = planner_response.data.get("target_files", [])
 
+        modify_targets = []
         for target in target_files_list:
             file_path = target.get("path", "")
             if target.get("action") == "MODIFY" and file_path:
+                modify_targets.append(file_path)
                 _try_read(file_path)
 
-        # Source 2: Files referenced in the user's request
-        ext_pattern = r"\b([\w/\\.-]+\.py)\b"
+        # Source 2: Graph-impacted files (callers/callees of targets)
+        graph_affected = context.prior_context.get("impact_reports", [])
+        for report in graph_affected:
+            for af in report.get("affected_files", []):
+                _try_read(af)
+
+        # Source 3: Files referenced in the user's request
+        ext_pattern = r"\b([\w/\\.-]+\.(?:py|js|ts|go|java|rb|rs))\b"
         request_files = re.findall(ext_pattern, context.user_request, re.IGNORECASE)
         for rf in request_files:
             # Try exact path first
@@ -735,13 +762,38 @@ class Orchestrator:
                         _try_read(rel)
                         break
 
-        # Source 3: Architect-suggested target file
+        # Source 4: Architect-suggested target file
         architect_target = context.prior_context.get("architect", {}).get("target_file", "")
         if architect_target:
             _try_read(architect_target)
 
+        # Source 5: Key project files (conventions, rules, configs)
+        for key_file in [
+            "README.md", "CONTRIBUTING.md", "CHANGELOG.md",
+            "pyproject.toml", "setup.cfg", "setup.py",
+            ".github/PULL_REQUEST_TEMPLATE.md",
+        ]:
+            _try_read(key_file)
+
+        # Source 6: Test files matching MODIFY targets
+        for mt in modify_targets:
+            mt_stem = Path(mt).stem
+            mt_dir = str(Path(mt).parent)
+            # Look for test_<name>.py or <name>_test.py
+            for test_pattern in [f"test_{mt_stem}.py", f"{mt_stem}_test.py"]:
+                # Search in tests/ and same directory
+                for search_dir in ["tests", "test", mt_dir]:
+                    test_path = f"{search_dir}/{test_pattern}"
+                    if _try_read(test_path):
+                        break
+
         if existing_file_contents:
             context.prior_context["existing_file_contents"] = existing_file_contents
+            self.reasoning.emit(
+                "context",
+                f"Loaded {len(existing_file_contents)} files into context "
+                f"({_total_chars():,} chars / {_TOTAL_BUDGET:,} budget)",
+            )
 
         # ── IMPLEMENTATION + REVIEW LOOP ──────────────────────────
         max_retries = self.config.max_retries
