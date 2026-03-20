@@ -196,16 +196,19 @@ class PRResearcher:
             List of PR data dicts from GitHub API.
         """
         limit = min(limit, 100)
+        # Fetch more than needed because many closed PRs aren't merged.
+        # Large repos like SymPy can have >80% unmerged closed PRs.
+        fetch_count = min(limit * 3, 100)
         url = (
             f"{_API_BASE}/repos/{repo_slug}/pulls"
             f"?state=closed&sort=updated&direction=desc"
-            f"&per_page={limit}"
+            f"&per_page={fetch_count}"
         )
 
         prs = self._request_list(url)
 
-        # Filter to only merged PRs
-        return [pr for pr in prs if pr.get("merged_at")]
+        # Filter to only merged PRs, then truncate to requested limit
+        return [pr for pr in prs if pr.get("merged_at")][:limit]
 
     def fetch_pr_files(
         self, repo_slug: str, pr_number: int

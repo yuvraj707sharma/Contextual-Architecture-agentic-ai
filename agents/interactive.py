@@ -1121,7 +1121,7 @@ async def interactive_session(args) -> int:
                 try:
                     researcher = PRResearcher()
                     patterns = researcher.analyze(
-                        slug, limit=15, fetch_files=True
+                        slug, limit=30, fetch_files=True
                     )
                     if patterns.total_prs_analyzed > 0:
                         width = min(
