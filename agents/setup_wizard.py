@@ -179,18 +179,19 @@ def detect_existing_keys() -> list:
 def test_api_key(provider_id: str, api_key: str) -> Tuple[bool, str]:
     """Test if an API key works by making a minimal API call."""
     try:
+        import asyncio
         from .llm_client import create_llm_client
         client = create_llm_client(
             provider=provider_id,
             api_key=api_key,
         )
-        # Make a tiny test call
-        response = client.generate(
+        # Make a tiny test call (generate is async, so we run it synchronously)
+        response = asyncio.run(client.generate(
             system_prompt="Reply with exactly: OK",
             user_prompt="Test connection. Reply with exactly one word: OK",
             temperature=0.0,
             max_tokens=10,
-        )
+        ))
         if response and response.content:
             return True, client.model_name
         return False, "Empty response"
