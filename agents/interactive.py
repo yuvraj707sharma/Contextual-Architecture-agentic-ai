@@ -137,9 +137,12 @@ def print_help():
     cmd_table.add_column(style="cyan bold", no_wrap=True)
     cmd_table.add_column(style="dim")
     cmd_table.add_row("/analyze", "Deep-scan the project (frameworks, CI, style, graph)")
+    cmd_table.add_row("/explore", "🤖 AI agent maps architecture by reading actual code")
+    cmd_table.add_row("/security", "🤖 AI agent performs security audit")
+    cmd_table.add_row("/style", "🤖 AI agent learns coding conventions")
+    cmd_table.add_row("/research <owner/repo>", "Research PR patterns from GitHub")
     cmd_table.add_row("/rules <text>", "Set session rules (e.g. GSoC constraints)")
     cmd_table.add_row("/gsoc", "Toggle GSoC mode (skip test gen, run existing tests)")
-    cmd_table.add_row("/research <owner/repo>", "Research PR patterns from GitHub")
     cmd_table.add_row("help", "Show this help message")
     cmd_table.add_row("exit / quit", "End the session")
     cmd_table.add_row("status", "Show current configuration")
@@ -1137,6 +1140,71 @@ async def interactive_session(args) -> int:
                         ci_test_cmd = snapshot.ci_test_command
                 except Exception as e:
                     console.print(f"  [bold red]❌ Analysis error:[/] {e}")
+                console.print()
+                continue
+
+            elif cmd in ("/explore", "/security", "/style"):
+                # ── Thinking Agent Commands ────────────────
+                agent_key = cmd.lstrip("/")
+                try:
+                    from .agent_personas import AGENT_PERSONAS
+                    from .thinking_agent import ThinkingAgent
+
+                    persona_data = AGENT_PERSONAS.get(agent_key)
+                    if not persona_data:
+                        persona_data = AGENT_PERSONAS.get("explorer")
+
+                    console.print(
+                        f"\n  [bold cyan]◆ {persona_data['name']} Agent[/] "
+                        f"[dim]{persona_data['description']}[/]"
+                    )
+
+                    agent = ThinkingAgent(
+                        name=persona_data["name"],
+                        persona=persona_data["persona"],
+                        llm_client=llm_client,
+                        repo_path=str(repo_path),
+                    )
+
+                    # Determine the task based on agent type
+                    repo_name = Path(repo_path).name
+                    task_map = {
+                        "explore": (
+                            f"Perform a comprehensive architecture analysis of the {repo_name} project. "
+                            f"Map the package structure, identify core modules, understand data flow, "
+                            f"and document key abstractions."
+                        ),
+                        "security": (
+                            f"Perform a security audit of the {repo_name} project. "
+                            f"Look for vulnerabilities, bad practices, hardcoded secrets, "
+                            f"injection risks, and insecure patterns."
+                        ),
+                        "style": (
+                            f"Analyze the coding style and conventions of the {repo_name} project. "
+                            f"Document naming conventions, file organization, error handling patterns, "
+                            f"docstring style, and OOP practices with real examples."
+                        ),
+                    }
+
+                    import asyncio
+                    loop = asyncio.new_event_loop()
+                    try:
+                        result = loop.run_until_complete(
+                            agent.run(task_map.get(agent_key, task_map["explore"]))
+                        )
+                    finally:
+                        loop.close()
+
+                    if result:
+                        console.print(
+                            f"\n  [dim]📄 Report saved to "
+                            f".contextual-architect/reports/{persona_data['report_file']}[/]"
+                        )
+
+                except Exception as e:
+                    console.print(f"  [bold red]❌ Agent error:[/] {e}")
+                    import traceback
+                    traceback.print_exc()
                 console.print()
                 continue
 

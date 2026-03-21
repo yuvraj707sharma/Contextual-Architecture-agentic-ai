@@ -448,6 +448,143 @@ class GeminiClient(BaseLLMClient):
             finish_reason="stop",
         )
 
+    async def generate_with_tools(
+        self,
+        messages: List[Dict[str, Any]],
+        tools: List[Dict[str, Any]],
+        temperature: float = 0.1,
+    ) -> Dict[str, Any]:
+        """Generate with native Gemini function calling.
+
+        Args:
+            messages: Conversation history [{role, content, ...}]
+            tools: MACRO tool schemas (OpenAI-compatible format)
+            temperature: Generation temperature
+
+        Returns:
+            Dict with either 'content' (final answer) or 'tool_calls' (list)
+        """
+        try:
+            from google import genai
+            from google.genai import types
+        except ImportError:
+            raise ImportError(
+                "Google Gemini SDK not installed. Run: pip install google-genai"
+            )
+
+        client = genai.Client(api_key=self.api_key)
+
+        # Convert MACRO tool schemas to Gemini format
+        gemini_tools = []
+        for tool in tools:
+            func = tool.get("function", tool)
+            props = {}
+            required = []
+            params = func.get("parameters", {})
+            for pname, pdef in params.get("properties", {}).items():
+                ptype = pdef.get("type", "string").upper()
+                if ptype == "INTEGER":
+                    ptype = "NUMBER"
+                props[pname] = types.Schema(
+                    type=ptype,
+                    description=pdef.get("description", ""),
+                )
+            required = params.get("required", [])
+
+            gemini_tools.append(types.Tool(
+                function_declarations=[
+                    types.FunctionDeclaration(
+                        name=func["name"],
+                        description=func.get("description", ""),
+                        parameters=types.Schema(
+                            type="OBJECT",
+                            properties=props,
+                            required=required,
+                        ) if props else None,
+                    )
+                ]
+            ))
+
+        # Build Gemini contents from messages
+        system_instruction = ""
+        contents = []
+
+        for msg in messages:
+            role = msg.get("role", "user")
+            content = msg.get("content", "")
+
+            if role == "system":
+                system_instruction = content
+            elif role == "user":
+                contents.append(types.Content(
+                    role="user",
+                    parts=[types.Part.from_text(text=content)],
+                ))
+            elif role == "tool":
+                # Tool response
+                tool_name = msg.get("name", "unknown")
+                contents.append(types.Content(
+                    role="user",
+                    parts=[types.Part.from_function_response(
+                        name=tool_name,
+                        response={"result": content},
+                    )],
+                ))
+            elif role == "assistant":
+                if msg.get("tool_calls"):
+                    # Assistant's tool call request
+                    parts = []
+                    for tc in msg["tool_calls"]:
+                        parts.append(types.Part.from_function_call(
+                            name=tc.get("name", ""),
+                            args=tc.get("arguments", {}),
+                        ))
+                    contents.append(types.Content(role="model", parts=parts))
+                elif content:
+                    contents.append(types.Content(
+                        role="model",
+                        parts=[types.Part.from_text(text=content)],
+                    ))
+
+        # Call Gemini
+        config = types.GenerateContentConfig(
+            temperature=temperature,
+            max_output_tokens=8192,
+            system_instruction=system_instruction if system_instruction else None,
+        )
+
+        response = client.models.generate_content(
+            model=self.model,
+            contents=contents,
+            config=config,
+            tools=gemini_tools if gemini_tools else None,
+        )
+
+        # Parse response — check for function calls
+        if response.candidates and response.candidates[0].content:
+            parts = response.candidates[0].content.parts
+            if parts:
+                tool_calls = []
+                text_parts = []
+
+                for part in parts:
+                    if part.function_call:
+                        fc = part.function_call
+                        tool_calls.append({
+                            "id": f"gemini_{fc.name}_{id(fc)}",
+                            "name": fc.name,
+                            "arguments": dict(fc.args) if fc.args else {},
+                        })
+                    elif part.text:
+                        text_parts.append(part.text)
+
+                if tool_calls:
+                    return {"tool_calls": tool_calls}
+                if text_parts:
+                    return {"content": "\n".join(text_parts)}
+
+        return {"content": response.text or ""}
+
 
 class GroqClient(BaseLLMClient):
     """
