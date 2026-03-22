@@ -1159,10 +1159,26 @@ async def interactive_session(args) -> int:
                         f"[dim]{persona_data['description']}[/]"
                     )
 
+                    # Use the SMART provider (planner) for thinking agents
+                    # Gemini/Sonnet think deeper than Groq/Llama
+                    smart_client = llm_client  # fallback to main
+                    if config.planner_provider and config.planner_provider != provider:
+                        try:
+                            smart_client = create_llm_client(
+                                provider=config.planner_provider,
+                                api_key=config.planner_api_key,
+                            )
+                            console.print(
+                                f"  [dim]Using smart provider: "
+                                f"{smart_client.model_name}[/]"
+                            )
+                        except Exception:
+                            smart_client = llm_client  # fallback
+
                     agent = ThinkingAgent(
                         name=persona_data["name"],
                         persona=persona_data["persona"],
-                        llm_client=llm_client,
+                        llm_client=smart_client,
                         repo_path=str(repo_path),
                     )
 

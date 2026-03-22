@@ -378,6 +378,105 @@ class AnthropicClient(BaseLLMClient):
             raw_response=data,
         )
 
+    async def generate_with_tools(
+        self,
+        messages: List[Dict[str, Any]],
+        tools: List[Dict[str, Any]],
+        temperature: float = 0.1,
+    ) -> Dict[str, Any]:
+        """Generate with native Anthropic tool use.
+
+        Claude has excellent native tool calling support.
+        Converts MACRO tool schemas to Anthropic format.
+        """
+        # Convert MACRO tool schemas to Anthropic format
+        anthropic_tools = []
+        for tool in tools:
+            func = tool.get("function", tool)
+            anthropic_tools.append({
+                "name": func["name"],
+                "description": func.get("description", ""),
+                "input_schema": func.get("parameters", {"type": "object", "properties": {}}),
+            })
+
+        # Build Anthropic messages from MACRO format
+        system = ""
+        anthropic_messages = []
+
+        for msg in messages:
+            role = msg.get("role", "user")
+            content = msg.get("content", "")
+
+            if role == "system":
+                system = content
+            elif role == "user":
+                anthropic_messages.append({"role": "user", "content": content})
+            elif role == "assistant":
+                if msg.get("tool_calls"):
+                    # Assistant requesting tool use
+                    blocks = []
+                    for tc in msg["tool_calls"]:
+                        blocks.append({
+                            "type": "tool_use",
+                            "id": tc.get("id", ""),
+                            "name": tc.get("name", ""),
+                            "input": tc.get("arguments", {}),
+                        })
+                    anthropic_messages.append({"role": "assistant", "content": blocks})
+                elif content:
+                    anthropic_messages.append({"role": "assistant", "content": content})
+            elif role == "tool":
+                # Tool result
+                anthropic_messages.append({
+                    "role": "user",
+                    "content": [{
+                        "type": "tool_result",
+                        "tool_use_id": msg.get("tool_call_id", ""),
+                        "content": content,
+                    }],
+                })
+
+        async def _call():
+            response = await self._client.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": self.api_key,
+                    "anthropic-version": "2023-06-01",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": self.model,
+                    "system": system,
+                    "messages": anthropic_messages,
+                    "tools": anthropic_tools,
+                    "temperature": temperature,
+                    "max_tokens": 8192,
+                },
+            )
+            response.raise_for_status()
+            return response.json()
+
+        data = await _retry_request(_call)
+
+        # Parse response — check for tool_use blocks
+        content_blocks = data.get("content", [])
+        tool_calls = []
+        text_parts = []
+
+        for block in content_blocks:
+            if block.get("type") == "tool_use":
+                tool_calls.append({
+                    "id": block.get("id", ""),
+                    "name": block.get("name", ""),
+                    "arguments": block.get("input", {}),
+                })
+            elif block.get("type") == "text":
+                text_parts.append(block.get("text", ""))
+
+        if tool_calls:
+            return {"tool_calls": tool_calls}
+        return {"content": "\n".join(text_parts)}
+
 
 class GeminiClient(BaseLLMClient):
     """
