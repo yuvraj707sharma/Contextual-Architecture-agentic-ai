@@ -98,14 +98,33 @@ class ThinkingAgent:
         for step in range(self.max_steps):
             self.step_count = step + 1
 
-            # Call LLM with tools
-            try:
-                response = await self._call_llm()
-            except Exception as e:
-                error_msg = f"LLM error at step {step + 1}: {type(e).__name__}: {e}"
-                logger.error(error_msg, extra={"agent": self.name})
-                console.print(f"  [red]❌ {error_msg}[/]")
-                return f"Agent error: {error_msg}"
+            # Call LLM with tools (with rate-limit retry)
+            response = None
+            for attempt in range(4):  # up to 3 retries
+                try:
+                    response = await self._call_llm()
+                    break
+                except Exception as e:
+                    err_str = str(e)
+                    is_rate_limit = "429" in err_str or "RESOURCE_EXHAUSTED" in err_str or "rate" in err_str.lower()
+
+                    if is_rate_limit and attempt < 3:
+                        wait = 3 * (2 ** attempt)  # 3s, 6s, 12s
+                        console.print(
+                            f"    [yellow]⏳ Rate limited, waiting {wait}s "
+                            f"(retry {attempt + 1}/3)...[/]"
+                        )
+                        import asyncio
+                        await asyncio.sleep(wait)
+                        continue
+                    else:
+                        error_msg = f"LLM error at step {step + 1}: {type(e).__name__}: {e}"
+                        logger.error(error_msg, extra={"agent": self.name})
+                        console.print(f"  [red]❌ {error_msg}[/]")
+                        return f"Agent error: {error_msg}"
+
+            if response is None:
+                return "Agent error: no response after retries"
 
             # Check if model wants to call tools
             if response.get("tool_calls"):
