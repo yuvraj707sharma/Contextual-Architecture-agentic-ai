@@ -72,14 +72,31 @@ def _can_render_unicode() -> bool:
 
 
 def print_banner(repo_path: str, provider: str, lang: str, config: AgentConfig):
-    """Print the startup banner — Rich bordered panel with pipeline."""
+    """Print the startup banner with ASCII art logo."""
     width = min(shutil.get_terminal_size().columns - 4, 80)
+
+    # ASCII art MACRO logo
+    logo_art = (
+        "[bold cyan]"
+        "  ███╗   ███╗ █████╗  ██████╗██████╗  ██████╗ \n"
+        "  ████╗ ████║██╔══██╗██╔════╝██╔══██╗██╔═══██╗\n"
+        "  ██╔████╔██║███████║██║     ██████╔╝██║   ██║\n"
+        "  ██║╚██╔╝██║██╔══██║██║     ██╔══██╗██║   ██║\n"
+        "  ██║ ╚═╝ ██║██║  ██║╚██████╗██║  ██║╚██████╔╝\n"
+        "  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝ ╚═════╝[/]\n"
+        "[dim]  Multi-Agent Contextual Repository Orchestrator[/]"
+    )
+
+    # Only show logo if terminal is wide enough
+    if width >= 52:
+        console.print()
+        console.print(logo_art)
 
     # Build the title line
     title = Text()
     title.append("macro", style="bold cyan")
     title.append(" v0.3.0", style="dim")
-    title.append("  ·  ", style="dim")
+    title.append("  \u00b7  ", style="dim")
     title.append(lang, style="cyan")
 
     # Build inner content
