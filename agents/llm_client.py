@@ -650,13 +650,13 @@ class GeminiClient(BaseLLMClient):
             temperature=temperature,
             max_output_tokens=8192,
             system_instruction=system_instruction if system_instruction else None,
+            tools=gemini_tools if gemini_tools else None,
         )
 
         response = client.models.generate_content(
             model=self.model,
             contents=contents,
             config=config,
-            tools=gemini_tools if gemini_tools else None,
         )
 
         # Parse response — check for function calls
