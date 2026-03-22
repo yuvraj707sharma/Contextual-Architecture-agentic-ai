@@ -1186,14 +1186,32 @@ async def interactive_session(args) -> int:
                         ),
                     }
 
-                    import asyncio
-                    loop = asyncio.new_event_loop()
-                    try:
-                        result = loop.run_until_complete(
-                            agent.run(task_map.get(agent_key, task_map["explore"]))
-                        )
-                    finally:
-                        loop.close()
+                    import threading
+
+                    result_holder = [None]
+                    error_holder = [None]
+
+                    def _run_agent():
+                        """Run async agent in a separate thread with its own event loop."""
+                        import asyncio as _aio
+                        new_loop = _aio.new_event_loop()
+                        _aio.set_event_loop(new_loop)
+                        try:
+                            result_holder[0] = new_loop.run_until_complete(
+                                agent.run(task_map.get(agent_key, task_map["explore"]))
+                            )
+                        except Exception as exc:
+                            error_holder[0] = exc
+                        finally:
+                            new_loop.close()
+
+                    thread = threading.Thread(target=_run_agent)
+                    thread.start()
+                    thread.join()  # Wait for agent to finish
+
+                    if error_holder[0]:
+                        raise error_holder[0]
+                    result = result_holder[0]
 
                     if result:
                         console.print(
