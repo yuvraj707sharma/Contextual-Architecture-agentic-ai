@@ -16,6 +16,7 @@ Works with any LLM provider that supports tool/function calling:
 """
 
 import json
+import re
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -23,13 +24,19 @@ from typing import Any, Dict, List, Optional
 from rich import box
 from rich.console import Console
 from rich.panel import Panel
-from rich.text import Text
+from rich.table import Table
 
 from .logger import get_logger
 from .tool_runtime import TOOL_SCHEMAS, ToolRuntime
 
 logger = get_logger("thinking_agent")
 console = Console()
+
+# Status symbols inspired by Gemini CLI
+STATUS_OK = "[green]✓[/]"
+STATUS_EXEC = "[cyan]⊷[/]"
+STATUS_ERR = "[red]✗[/]"
+STATUS_WAIT = "[yellow]◦[/]"
 
 
 class ThinkingAgent:
@@ -74,6 +81,7 @@ class ThinkingAgent:
         self.messages: List[Dict[str, Any]] = []
         self.step_count = 0
         self.total_tokens = 0
+        self.tool_stats: Dict[str, Dict[str, Any]] = {}  # track per-tool stats
 
     async def run(self, task: str) -> str:
         """Run the agent loop until it produces a final answer.
@@ -93,7 +101,7 @@ class ThinkingAgent:
         ]
         self.step_count = 0
 
-        console.print(f"\n  [bold cyan]🤖 {self.name} Agent[/] thinking...\n")
+        console.print(f"\n  [bold cyan]◆ {self.name} Agent[/] [dim]analyzing...[/]\n")
 
         for step in range(self.max_steps):
             self.step_count = step + 1
@@ -109,19 +117,20 @@ class ThinkingAgent:
                     is_rate_limit = "429" in err_str or "RESOURCE_EXHAUSTED" in err_str or "rate" in err_str.lower()
 
                     if is_rate_limit and attempt < 3:
-                        wait = 3 * (2 ** attempt)  # 3s, 6s, 12s
+                        wait_secs = self._extract_retry_delay(err_str) or (3 * (2 ** attempt))
                         console.print(
-                            f"    [yellow]⏳ Rate limited, waiting {wait}s "
-                            f"(retry {attempt + 1}/3)...[/]"
+                            f"    {STATUS_WAIT} [yellow]Rate limited "
+                            f"— waiting {wait_secs:.0f}s[/] "
+                            f"[dim]({attempt + 1}/3)[/]"
                         )
                         import asyncio
-                        await asyncio.sleep(wait)
+                        await asyncio.sleep(wait_secs)
                         continue
                     else:
-                        error_msg = f"LLM error at step {step + 1}: {type(e).__name__}: {e}"
-                        logger.error(error_msg, extra={"agent": self.name})
-                        console.print(f"  [red]❌ {error_msg}[/]")
-                        return f"Agent error: {error_msg}"
+                        clean_err = self._clean_error_message(e)
+                        logger.error(clean_err, extra={"agent": self.name})
+                        console.print(f"    {STATUS_ERR} [red]{clean_err}[/]")
+                        return f"Agent error: {clean_err}"
 
             if response is None:
                 return "Agent error: no response after retries"
@@ -134,14 +143,29 @@ class ThinkingAgent:
                     arguments = call.get("arguments", {})
                     call_id = call.get("id", "")
 
-                    # Display tool call
-                    self._display_tool_call(tool_name, arguments)
+                    # Display tool call (in-progress)
+                    self._display_tool_call(tool_name, arguments, executing=True)
 
-                    # Execute tool
+                    # Execute tool (timed)
+                    t0 = time.monotonic()
                     result = await self.tool_runtime.execute(tool_name, arguments)
+                    call_elapsed = time.monotonic() - t0
+
+                    # Track per-tool stats
+                    is_error = result.startswith("Error")
+                    if tool_name not in self.tool_stats:
+                        self.tool_stats[tool_name] = {
+                            "calls": 0, "errors": 0, "total_ms": 0.0,
+                        }
+                    self.tool_stats[tool_name]["calls"] += 1
+                    self.tool_stats[tool_name]["total_ms"] += call_elapsed * 1000
+                    if is_error:
+                        self.tool_stats[tool_name]["errors"] += 1
 
                     # Display result summary
-                    self._display_tool_result(tool_name, result)
+                    self._display_tool_result(
+                        tool_name, result, call_elapsed, is_error,
+                    )
 
                     # Add to conversation
                     self.messages.append({
@@ -160,10 +184,8 @@ class ThinkingAgent:
             final_answer = response.get("content", "")
             elapsed = time.monotonic() - start_time
 
-            console.print(
-                f"\n  [dim]✅ {self.name} completed in {elapsed:.1f}s "
-                f"({self.step_count} steps)[/]\n"
-            )
+            # Display session summary
+            self._display_session_summary(elapsed)
 
             # Display the report
             self._display_report(final_answer)
@@ -296,57 +318,135 @@ class ThinkingAgent:
 
     # ── Display Methods ───────────────────────────────────
 
-    def _display_tool_call(self, tool_name: str, arguments: Dict[str, Any]):
-        """Show a tool call in the terminal."""
-        # Format arguments nicely
-        arg_str = ""
+    def _display_tool_call(
+        self, tool_name: str, arguments: Dict[str, Any], executing: bool = False,
+    ):
+        """Show a tool call in the terminal with tree formatting."""
+        # Format arguments concisely
+        arg_parts = []
         for key, val in arguments.items():
             val_str = str(val)
-            if len(val_str) > 80:
-                val_str = val_str[:77] + "..."
-            arg_str += f" {key}={val_str}"
+            if len(val_str) > 60:
+                val_str = val_str[:57] + "..."
+            arg_parts.append(f"[dim]{key}=[/]{val_str}")
+        args_display = " ".join(arg_parts)
 
-        console.print(f"    ├ [dim]🔧 {tool_name}[/]{arg_str}")
+        status = STATUS_EXEC if executing else STATUS_OK
+        console.print(f"    ├─ {status} [bold]{tool_name}[/] {args_display}")
 
-    def _display_tool_result(self, tool_name: str, result: str):
-        """Show a tool result summary in the terminal."""
-        # Show first line or character count
+    def _display_tool_result(
+        self, tool_name: str, result: str,
+        elapsed: float = 0.0, is_error: bool = False,
+    ):
+        """Show a tool result summary with elapsed time."""
         lines = result.strip().splitlines()
         if not lines:
             summary = "(empty)"
         elif len(lines) == 1:
-            summary = lines[0][:100]
+            summary = lines[0][:90]
         else:
-            summary = f"{lines[0][:60]}... ({len(lines)} lines)"
+            summary = f"{lines[0][:55]}... ({len(lines)} lines)"
 
-        if result.startswith("Error"):
-            console.print(f"    │   [red]{summary}[/]")
+        time_str = f"[dim]{elapsed:.1f}s[/]" if elapsed > 0.01 else ""
+
+        if is_error:
+            console.print(f"    │  {STATUS_ERR} [red]{summary}[/] {time_str}")
         else:
-            console.print(f"    │   [dim]{summary}[/]")
+            console.print(f"    │  [dim]{summary}[/] {time_str}")
+
+    def _display_session_summary(self, elapsed: float):
+        """Show a clean session stats summary box."""
+        unique_tools = len(self.tool_stats)
+        total_calls = sum(s["calls"] for s in self.tool_stats.values())
+        total_errors = sum(s["errors"] for s in self.tool_stats.values())
+
+        # Build stats table
+        table = Table(
+            show_header=False, box=box.SIMPLE, padding=(0, 1),
+            show_edge=False,
+        )
+        table.add_column(style="dim")
+        table.add_column(style="bold")
+
+        table.add_row("Steps", str(self.step_count))
+        table.add_row("Time", f"{elapsed:.1f}s")
+        table.add_row("Tool calls", f"{total_calls} ({unique_tools} unique)")
+        if total_errors > 0:
+            table.add_row("Errors", f"[red]{total_errors}[/]")
+
+        # Tool breakdown
+        if self.tool_stats:
+            breakdown_parts = []
+            for name, stats in sorted(
+                self.tool_stats.items(),
+                key=lambda x: x[1]["calls"],
+                reverse=True,
+            ):
+                avg_ms = stats["total_ms"] / max(stats["calls"], 1)
+                breakdown_parts.append(
+                    f"{name} x{stats['calls']} [dim]({avg_ms:.0f}ms avg)[/]"
+                )
+            table.add_row("Tools", ", ".join(breakdown_parts[:4]))
+
+        console.print()
+        console.print(Panel(
+            table,
+            title=f"[bold green]✓[/] [bold]{self.name}[/] [dim]complete[/]",
+            border_style="green",
+            box=box.ROUNDED,
+            padding=(0, 1),
+            width=min(console.width, 80),
+        ))
 
     def _display_report(self, report: str):
         """Display the final report in a rich panel."""
-        # Truncate for display — full version is in the saved file
         display_lines = report.splitlines()
-        if len(display_lines) > 60:
-            display_text = "\n".join(display_lines[:55])
-            display_text += f"\n\n... ({len(display_lines) - 55} more lines in saved report)"
+        if len(display_lines) > 50:
+            display_text = "\n".join(display_lines[:45])
+            remaining = len(display_lines) - 45
+            display_text += f"\n\n[dim]... {remaining} more lines in saved report[/]"
         else:
             display_text = report
 
-        width = min(console.width, 90)
-        report_text = Text(display_text)
-
+        width = min(console.width, 88)
         console.print(Panel(
-            report_text,
+            display_text,
             title=f"[bold cyan]{self.name} Report[/]",
-            border_style="cyan",
+            border_style="dim cyan",
             box=box.ROUNDED,
             width=width,
             padding=(1, 2),
         ))
 
     # ── Helpers ───────────────────────────────────────────
+
+    @staticmethod
+    def _clean_error_message(exc: Exception) -> str:
+        """Extract a clean one-liner from API error blobs."""
+        err = str(exc)
+        # Extract 'message' from JSON-like error strings
+        msg_match = re.search(r"'message':\s*'([^']+)'", err)
+        if msg_match:
+            msg = msg_match.group(1)
+            # Trim at \n for readability
+            msg = msg.split("\\n")[0].split("\n")[0]
+            if len(msg) > 120:
+                msg = msg[:117] + "..."
+            return msg
+        # Fallback: just the exception type + first 100 chars
+        short = err[:100] + "..." if len(err) > 100 else err
+        return f"{type(exc).__name__}: {short}"
+
+    @staticmethod
+    def _extract_retry_delay(err_str: str) -> Optional[float]:
+        """Extract retry delay from a rate-limit error message."""
+        match = re.search(r'retryDelay.*?(\d+\.?\d*)s', err_str)
+        if match:
+            return float(match.group(1)) + 1  # add 1s buffer
+        match = re.search(r"retry in (\d+\.?\d*)s", err_str, re.IGNORECASE)
+        if match:
+            return float(match.group(1)) + 1
+        return None
 
     def _build_task_prompt(self, task: str) -> str:
         """Build the initial task prompt with repo context."""

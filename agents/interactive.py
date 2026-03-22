@@ -80,39 +80,43 @@ def print_banner(repo_path: str, provider: str, lang: str, config: AgentConfig):
     title.append("macro", style="bold cyan")
     title.append(" v0.3.0", style="dim")
     title.append("  ·  ", style="dim")
-    title.append(provider, style="bold green")
-    title.append("  ·  ", style="dim")
     title.append(lang, style="cyan")
 
-    # Build the pipeline chain
-    pipeline = Text()
+    # Build inner content
+    inner = Text()
+    inner.append("  repo   ", style="dim")
+    inner.append(f"{repo_path}\n")
+
+    # Show both provider tiers
+    inner.append("  fast   ", style="dim")
+    inner.append(f"{provider}", style="green")
+    inner.append("  (chat, code gen)\n", style="dim")
+    if config.planner_provider:
+        inner.append("  smart  ", style="dim")
+        inner.append(f"{config.planner_provider}", style="bold green")
+        inner.append("  (agents, planning)\n", style="dim")
+    inner.append("\n")
+
+    # Pipeline stages
     stages = [
         ("scan", "cyan"), ("graph", "cyan"),
         ("plan", "green"), ("code", "yellow"),
         ("review", "red"), ("test", "cyan"),
         ("write", "green"),
     ]
+    inner.append("  ")
     for i, (name, color) in enumerate(stages):
-        pipeline.append(name, style=color)
+        inner.append(name, style=color)
         if i < len(stages) - 1:
-            pipeline.append(" → ", style="dim")
-
-    # Build inner content
-    inner = Text()
-    inner.append("  repo  ", style="dim")
-    inner.append(f"{repo_path}\n")
-    if config.planner_provider:
-        inner.append("  plan  ", style="dim")
-        inner.append(f"{config.planner_provider}")
-        inner.append("  (smart planner)\n", style="dim")
-    inner.append("\n")
-    inner.append_text(pipeline)
+            inner.append(" \u2192 ", style="dim")
     inner.append("\n\n")
-    inner.append("  ask  ", style="dim italic")
+
+    # Quick start hints
+    inner.append("  ask   ", style="dim italic")
     inner.append("questions about your code\n", style="dim")
-    inner.append("  build", style="dim italic")
-    inner.append(" type what you want to build\n", style="dim")
-    inner.append("  help ", style="dim italic")
+    inner.append("  build ", style="dim italic")
+    inner.append("type what you want to build\n", style="dim")
+    inner.append("  help  ", style="dim italic")
     inner.append("show all commands", style="dim")
 
     panel = Panel(
@@ -129,63 +133,78 @@ def print_banner(repo_path: str, provider: str, lang: str, config: AgentConfig):
 
 
 def print_help():
-    """Print available commands — Rich panels."""
+    """Print available commands — Rich panels with grouped sections."""
     width = min(shutil.get_terminal_size().columns - 4, 80)
 
-    # ── Commands table ──
-    cmd_table = Table(show_header=False, box=None, padding=(0, 2, 0, 0))
-    cmd_table.add_column(style="cyan bold", no_wrap=True)
-    cmd_table.add_column(style="dim")
-    cmd_table.add_row("/analyze", "Deep-scan the project (frameworks, CI, style, graph)")
-    cmd_table.add_row("/explore", "🤖 AI agent maps architecture by reading actual code")
-    cmd_table.add_row("/security", "🤖 AI agent performs security audit")
-    cmd_table.add_row("/style", "🤖 AI agent learns coding conventions")
-    cmd_table.add_row("/research <owner/repo>", "Research PR patterns from GitHub")
-    cmd_table.add_row("/rules <text>", "Set session rules (e.g. GSoC constraints)")
-    cmd_table.add_row("/gsoc", "Toggle GSoC mode (skip test gen, run existing tests)")
-    cmd_table.add_row("help", "Show this help message")
-    cmd_table.add_row("exit / quit", "End the session")
-    cmd_table.add_row("status", "Show current configuration")
-    cmd_table.add_row("config", "Show saved config path")
-    cmd_table.add_row("clear", "Clear the screen")
+    # ── Thinking Agents (smart provider) ──
+    agent_table = Table(
+        show_header=False, box=None, padding=(0, 2, 0, 0),
+    )
+    agent_table.add_column(style="bold cyan", no_wrap=True, width=12)
+    agent_table.add_column(style="dim")
+    agent_table.add_row("/explore", "Deep architecture analysis using AI exploration")
+    agent_table.add_row("/security", "Security audit with vulnerability detection")
+    agent_table.add_row("/style", "Coding convention analysis from real code")
 
     console.print(Panel(
-        cmd_table, title="[bold]Commands[/]",
+        agent_table,
+        title="[bold cyan]\u25c6 Thinking Agents[/]",
+        subtitle="[dim]uses smart provider[/]",
+        border_style="cyan", box=box.ROUNDED, width=width, padding=(0, 1),
+    ))
+
+    # ── Pipeline & Analysis ──
+    pipe_table = Table(
+        show_header=False, box=None, padding=(0, 2, 0, 0),
+    )
+    pipe_table.add_column(style="bold green", no_wrap=True, width=22)
+    pipe_table.add_column(style="dim")
+    pipe_table.add_row("/analyze", "Deep-scan project (frameworks, CI, style, graph)")
+    pipe_table.add_row("/research <owner/repo>", "Research PR patterns from GitHub")
+    pipe_table.add_row("/rules <text>", "Set session rules (e.g. GSoC constraints)")
+    pipe_table.add_row("/gsoc", "Toggle GSoC mode (skip test gen)")
+
+    console.print(Panel(
+        pipe_table,
+        title="[bold green]Pipeline & Analysis[/]",
+        border_style="green", box=box.ROUNDED, width=width, padding=(0, 1),
+    ))
+
+    # ── Session ──
+    sess_table = Table(
+        show_header=False, box=None, padding=(0, 2, 0, 0),
+    )
+    sess_table.add_column(style="bold", no_wrap=True, width=12)
+    sess_table.add_column(style="dim")
+    sess_table.add_row("help", "Show this help message")
+    sess_table.add_row("status", "Show current configuration")
+    sess_table.add_row("config", "Show saved config path")
+    sess_table.add_row("clear", "Clear the screen")
+    sess_table.add_row("exit", "End the session")
+
+    console.print(Panel(
+        sess_table,
+        title="[bold]Session[/]",
         border_style="dim", box=box.ROUNDED, width=width, padding=(0, 1),
     ))
 
-    # ── Usage ──
+    # ── Usage examples ──
     usage = Text()
-    usage.append("[?] Chat Mode", style="bold cyan")
-    usage.append(" — ask questions about your code:\n")
-    usage.append("  ❯ ", style="green")
-    usage.append("What does @Project_1.c do?\n")
-    usage.append("  ❯ ", style="green")
-    usage.append("Find bugs in @utils.py\n")
-    usage.append("\n")
-    usage.append("[+] Build Mode", style="bold yellow")
-    usage.append(" — generate code in plain English:\n")
-    usage.append("  ❯ ", style="green")
-    usage.append("Add user authentication\n")
-    usage.append("  ❯ ", style="green")
-    usage.append("Add binary search to @sorting.cpp\n")
-    usage.append("\n")
-    usage.append("[@] File References", style="bold magenta")
-    usage.append(" — target specific files:\n")
-    usage.append("  ❯ ", style="green")
-    usage.append("Add booking to @Movie_ticket_pricing.py\n")
-    usage.append("  Without @, a new file is created (in build mode).\n", style="dim")
-    usage.append("\n")
-    usage.append("Pseudocode (|||)", style="bold")
-    usage.append(" — control the logic:\n")
-    usage.append("  ❯ ", style="green")
-    usage.append("Add fibonacci ||| 1. Take n 2. Iterative 3. Print all\n")
-    usage.append("\n")
-    usage.append("Languages: ", style="bold")
-    usage.append("python │ cpp │ c │ go │ typescript │ javascript │ java", style="dim")
+    usage.append("[?] Chat", style="bold cyan")
+    usage.append(" \u2014 ")
+    usage.append("What does @utils.py do?\n", style="dim")
+    usage.append("[+] Build", style="bold yellow")
+    usage.append(" \u2014 ")
+    usage.append("Add user authentication\n", style="dim")
+    usage.append("[@] Target", style="bold magenta")
+    usage.append(" \u2014 ")
+    usage.append("Add booking to @Movie_ticket_pricing.py\n", style="dim")
+    usage.append("[|||] Pseudo", style="bold")
+    usage.append(" \u2014 ")
+    usage.append("Add fibonacci ||| 1. Take n 2. Iterative", style="dim")
 
     console.print(Panel(
-        usage, title="[bold]Usage[/]",
+        usage, title="[bold]Quick Start[/]",
         border_style="dim", box=box.ROUNDED, width=width, padding=(0, 1),
     ))
     console.print()
