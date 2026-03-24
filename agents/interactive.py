@@ -358,12 +358,13 @@ def detect_intent(user_input: str) -> str:
 
 # ── Chat Handler ──────────────────────────────────────────
 
-def _collect_file_contents(repo_path: str, user_input: str, lang: str, max_files: int = 5) -> str:
+def _collect_file_contents(repo_path: str, user_input: str, lang: str, max_files: int = 10) -> str:
     """
     Collect relevant file contents for answering a question.
 
-    If @files are mentioned, read those. Otherwise, read a few
-    representative files from the project.
+    Uses code graph intelligence to rank files by centrality (most-imported,
+    most-called files first) instead of random walking. Always includes
+    README.md and pyproject.toml for project overview context.
     """
     from pathlib import Path
 
@@ -376,52 +377,104 @@ def _collect_file_contents(repo_path: str, user_input: str, lang: str, max_files
 
     contents = []
     repo = Path(repo_path)
+    read_files: set = set()
 
-    # Check for @file references
+    # ── Always include project overview files (like Gemini CLI) ──
+    for overview_name in ['README.md', 'readme.md', 'README.rst',
+                          'pyproject.toml', 'package.json', 'Cargo.toml', 'go.mod']:
+        overview = repo / overview_name
+        if overview.exists() and overview.is_file():
+            try:
+                text = overview.read_text(encoding='utf-8', errors='ignore')[:4000]
+                contents.append(f"=== {overview_name} ===\n{text}")
+                read_files.add(overview_name)
+            except Exception:
+                pass
+
+    # ── Check for @file references ──
     file_refs = re.findall(r'@([\w/\\.-]+)', user_input)
 
     if file_refs:
-        # Read referenced files
         for ref in file_refs[:max_files]:
             fpath = repo / ref
-
-            # SECURITY: Block path traversal
             if not _is_safe_path(fpath, repo):
                 contents.append(f"=== {ref} === [BLOCKED: path traversal]")
                 continue
-
             if not fpath.exists():
-                # Try recursive search
                 for f in repo.rglob(Path(ref).name):
                     if '.contextual-architect' not in str(f) and _is_safe_path(f, repo):
                         fpath = f
                         break
             if fpath.exists() and fpath.is_file() and _is_safe_path(fpath, repo):
                 try:
-                    text = fpath.read_text(encoding='utf-8', errors='ignore')[:3000]
-                    rel = fpath.relative_to(repo)
-                    contents.append(f"=== {rel} ===\n{text}")
+                    text = fpath.read_text(encoding='utf-8', errors='ignore')[:5000]
+                    rel = str(fpath.relative_to(repo)).replace("\\", "/")
+                    if rel not in read_files:
+                        contents.append(f"=== {rel} ===\n{text}")
+                        read_files.add(rel)
                 except Exception:
                     pass
     else:
-        # No specific files mentioned — read a sample of project files
-        exts = LANG_EXT.get(lang, ['.py'])
-        collected = 0
-        for ext in exts:
-            for f in repo.rglob(f'*{ext}'):
-                if '.contextual-architect' in str(f):
-                    continue
-                if collected >= max_files:
-                    break
-                try:
-                    text = f.read_text(encoding='utf-8', errors='ignore')[:2000]
-                    rel = f.relative_to(repo)
-                    contents.append(f"=== {rel} ===\n{text}")
-                    collected += 1
-                except Exception:
-                    continue
+        # ── Graph-powered file ranking ──
+        file_scores: dict = {}
+        try:
+            from agents.graph_builder import build_repo_graph
+            graph = build_repo_graph(repo_path, max_files=500)
 
-    # Also include directory listing
+            for file_path_g in graph._file_nodes:
+                score = 0
+                importers = graph.files_importing(file_path_g)
+                score += len(importers) * 3
+
+                for node_key in graph._file_nodes.get(file_path_g, []):
+                    callers = graph._callers.get(node_key, set())
+                    external_callers = [
+                        c for c in callers
+                        if graph.nodes.get(c) and graph.nodes[c].file_path != file_path_g
+                    ]
+                    score += len(external_callers)
+
+                node_count = len(graph._file_nodes.get(file_path_g, []))
+                score += node_count // 5
+                file_scores[file_path_g] = score
+        except Exception:
+            pass
+
+        if file_scores:
+            ranked = sorted(file_scores.items(), key=lambda x: -x[1])
+            slots = max_files - len(read_files)
+            for file_path_g, score in ranked[:slots]:
+                if file_path_g in read_files:
+                    continue
+                abs_path = repo / file_path_g
+                if abs_path.exists() and abs_path.is_file():
+                    try:
+                        text = abs_path.read_text(encoding='utf-8', errors='ignore')[:5000]
+                        contents.append(f"=== {file_path_g} (centrality: {score}) ===\n{text}")
+                        read_files.add(file_path_g)
+                    except Exception:
+                        continue
+        else:
+            exts = LANG_EXT.get(lang, ['.py'])
+            collected = 0
+            for ext in exts:
+                for f in repo.rglob(f'*{ext}'):
+                    if '.contextual-architect' in str(f):
+                        continue
+                    rel = str(f.relative_to(repo)).replace("\\", "/")
+                    if rel in read_files:
+                        continue
+                    if collected >= max_files:
+                        break
+                    try:
+                        text = f.read_text(encoding='utf-8', errors='ignore')[:3000]
+                        contents.append(f"=== {rel} ===\n{text}")
+                        read_files.add(rel)
+                        collected += 1
+                    except Exception:
+                        continue
+
+    # ── Directory structure ──
     try:
         top_files = []
         for item in sorted(repo.iterdir()):
@@ -430,11 +483,12 @@ def _collect_file_contents(repo_path: str, user_input: str, lang: str, max_files
             kind = '[D]' if item.is_dir() else '[F]'
             top_files.append(f"  {kind} {item.name}")
         if top_files:
-            contents.insert(0, "=== Project Structure ===\n" + '\n'.join(top_files[:20]))
+            contents.insert(0, "=== Project Structure ===\n" + '\n'.join(top_files[:30]))
     except Exception:
         pass
 
     return '\n\n'.join(contents)
+
 
 
 async def handle_chat(
