@@ -291,6 +291,10 @@ _QUESTION_PATTERNS = [
     r'^describe\b',
     r'^tell me\b',
     r'^show me\b',
+    r'^explore\b',
+    r'^walk me through\b',
+    r'^give me\b',
+    r'^help me understand\b',
     r'^is there\b',
     r'^does\b',
     r'^can you (explain|describe|show|tell)',
@@ -303,6 +307,13 @@ _QUESTION_PATTERNS = [
     r'^review\b',
     r'^analyze\b',
     r'^list\b',
+    r'\btell me\b',
+    r'\bexplain\b',
+    r'\bdescribe\b',
+    r'\bwhat is\b',
+    r'\bhow does\b',
+    r'\bwhat does\b',
+    r'\babout (this|the|my)\b',
     r'\?$',  # ends with question mark
 ]
 
@@ -340,8 +351,9 @@ def detect_intent(user_input: str) -> str:
     if _QUESTION_RE.search(text):
         return 'chat'
 
-    # Default to build
-    return 'build'
+    # Default to chat — most natural-language inputs are questions
+    # Users must use build keywords (add/create/implement/etc.) for code gen
+    return 'chat'
 
 
 # ── Chat Handler ──────────────────────────────────────────
