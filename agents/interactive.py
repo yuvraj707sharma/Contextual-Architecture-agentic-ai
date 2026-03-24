@@ -491,17 +491,17 @@ User question: {clean_question}
         # Clear the "Thinking..." line
         print("                        ", end='\r')
 
-        # Print the response with ◆ prefix
+        # Render as flowing markdown with ✦ marker (like Gemini CLI)
         answer = response.content.strip()
-        width = min(shutil.get_terminal_size().columns - 4, 80)
-        response_panel = Panel(
-            answer,
-            border_style="cyan",
-            box=box.ROUNDED,
-            width=width,
-            padding=(0, 1),
-        )
-        console.print(response_panel)
+        console.print()
+        console.print("[bold cyan]✦[/] ", end="")
+        try:
+            from rich.markdown import Markdown
+            md = Markdown(answer)
+            console.print(md)
+        except ImportError:
+            console.print(answer)
+        console.print()
     except Exception as e:
         console.print(f"  [bold red]❌ Chat error:[/] {e}")
         console.print()
