@@ -1107,9 +1107,30 @@ async def interactive_session(args) -> int:
         term_width = shutil.get_terminal_size().columns
         repo_name = Path(repo_path).name
         model_name = getattr(llm_client, 'model_name', provider)
+
+        # Try to get git branch
+        branch = ""
+        try:
+            import subprocess
+            result = subprocess.run(
+                ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                capture_output=True, text=True, cwd=repo_path,
+                timeout=2,
+            )
+            if result.returncode == 0:
+                branch = result.stdout.strip()
+        except Exception:
+            pass
+
         left = f"  {repo_name}"
-        right = f"{provider} · {model_name}  "
-        padding = term_width - len(left) - len(right)
+        right_parts = []
+        if branch:
+            right_parts.append(f"\033[33m{branch}\033[0m")
+        right_parts.append(f"{provider} \u00b7 {model_name}")
+        right = "  ".join(right_parts) + "  "
+        # Calculate padding (account for ANSI escape codes in right)
+        visible_right = right.replace("\033[33m", "").replace("\033[0m", "")
+        padding = term_width - len(left) - len(visible_right)
         if padding < 1:
             padding = 1
         footer = f"\033[2m{left}{' ' * padding}{right}\033[0m"
@@ -1124,10 +1145,14 @@ async def interactive_session(args) -> int:
         _print_footer()
         print(Colors.colored(top, Colors.DIM))
         try:
-            user_in = input(Colors.colored("  │ ", Colors.DIM) +
-                           Colors.colored("❯ ", Colors.GREEN + Colors.BOLD))
-        finally:
+            user_in = input(
+                Colors.colored("  │ ", Colors.DIM)
+                + Colors.colored("❯ ", Colors.GREEN + Colors.BOLD)
+            )
+        except (EOFError, KeyboardInterrupt):
             print(Colors.colored(bottom, Colors.DIM))
+            raise
+        print(Colors.colored(bottom, Colors.DIM))
         return user_in.strip()
 
     # Interactive loop
