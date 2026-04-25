@@ -213,3 +213,11 @@ AGPL v3 — See [LICENSE](LICENSE).
 - 🔀 **Contribute** — see [CONTRIBUTING.md](CONTRIBUTING.md)
 
 Built by **Yuvraj Sharma** — [Follow on GitHub](https://github.com/yuvraj707sharma) for updates.
+
+
+## Contributors
+
+Thanks to these wonderful people for contributing to MACRO:
+
+- **Tarun Pachori** — AI/ML Engineer with a focus on multi-agent systems and LLM-powered tooling. Contributed to the core agentic pipeline by refining the Reviewer agent's static analysis and linting heuristics, improving code quality enforcement across multi-step generation cycles. Also extended the RAG layer's AST chunking strategy to produce semantically richer code chunks, enabling more precise context retrieval during LLM inference. Additionally helped optimize prompt construction in the system prompts module to better align agent personas with Staff+ Engineer reasoning patterns. — [GitHub](https://github.com/pachoritarun) · [LinkedIn](https://www.linkedin.com/in/tarun-pancholi-0433b9308) · [Portfolio](https://tarunpancholi.vercel.app)
+
