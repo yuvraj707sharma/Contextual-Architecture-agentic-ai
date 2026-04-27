@@ -1209,23 +1209,28 @@ async def interactive_session(args) -> int:
         top = f"  ╭{'─' * inner_w}╮"
         bottom = f"  ╰{'─' * inner_w}╯"
         _print_footer()
-        print(Colors.colored(top, Colors.DIM))
+        print(Colors.colored(top, Colors.DIM), flush=True)
         try:
             user_in = input(
                 Colors.colored("  │ ", Colors.DIM)
                 + Colors.colored("❯ ", Colors.GREEN + Colors.BOLD)
             )
         except (EOFError, KeyboardInterrupt):
-            print(Colors.colored(bottom, Colors.DIM))
+            print()  # newline after partial input
+            print(Colors.colored(bottom, Colors.DIM), flush=True)
             raise
-        print(Colors.colored(bottom, Colors.DIM))
+        print(Colors.colored(bottom, Colors.DIM), flush=True)
         return user_in.strip()
 
     # Interactive loop
     while True:
         try:
             # Bordered input prompt
-            user_input = _bordered_input()
+            try:
+                user_input = _bordered_input()
+            except (KeyboardInterrupt, EOFError):
+                console.print(f"\n  [dim]Session ended. {request_count} requests processed.[/]\n")
+                return 0
 
             if not user_input:
                 continue
@@ -1640,9 +1645,9 @@ async def interactive_session(args) -> int:
             print()
 
         except KeyboardInterrupt:
-            console.print(f"\n\n  [dim]Session ended. {request_count} requests processed.[/]\n")
+            # Already handled in _bordered_input catch above
             return 0
 
         except EOFError:
-            console.print(f"\n\n  [dim]Session ended. {request_count} requests processed.[/]\n")
+            # Already handled in _bordered_input catch above
             return 0
