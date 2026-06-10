@@ -100,8 +100,10 @@ class ReasoningDisplay:
         self.verbose = verbose
         self.steps: List[ReasoningStep] = []
         self._current_agent: str = ""
-        self._suppress = False
-        self._console = Console(stderr=True) if _HAS_RICH else None
+        # Suppress all TUI in CI/quiet mode (set by --quiet / -z flag)
+        import os
+        self._suppress = os.environ.get("MACRO_QUIET") == "1"
+        self._console = Console(stderr=True) if (_HAS_RICH and not self._suppress) else None
 
         # Spinner state
         self._spinner_thread: Optional[threading.Thread] = None

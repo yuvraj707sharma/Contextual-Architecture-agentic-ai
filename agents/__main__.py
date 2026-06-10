@@ -180,6 +180,14 @@ Examples:
         action="store_true",
         help="Auto-approve all file changes (skip permission prompts)",
     )
+    parser.add_argument(
+        "--quiet", "-z",
+        action="store_true",
+        help=(
+            "CI/headless mode: suppress TUI output, force auto-approve, "
+            "write only final result to stdout. Implies --yes --json."
+        ),
+    )
 
     return parser
 
@@ -392,17 +400,19 @@ async def run(args) -> int:
         else:
             user_pseudocode = args.pseudocode.strip()
 
-    # Print banner
-    print()
-    print("MACRO -- Multi-Agent Contextual Repository Orchestrator")
-    print(f"   Request:  {args.request}")
-    print(f"   Repo:     {repo_path}")
-    print(f"   Language: {args.lang}")
-    print(f"   Provider: {provider}" + (f" ({args.model})" if args.model else ""))
-    print(f"   Retries:  {args.max_retries}")
-    if user_pseudocode:
-        print(f"   Pseudo:   {user_pseudocode[:80]}..." if len(user_pseudocode) > 80 else f"   Pseudo:   {user_pseudocode}")
-    print()
+    # Print banner (suppress in quiet mode)
+    quiet = getattr(args, 'quiet', False)
+    if not quiet:
+        print()
+        print("MACRO -- Multi-Agent Contextual Repository Orchestrator")
+        print(f"   Request:  {args.request}")
+        print(f"   Repo:     {repo_path}")
+        print(f"   Language: {args.lang}")
+        print(f"   Provider: {provider}" + (f" ({args.model})" if args.model else ""))
+        print(f"   Retries:  {args.max_retries}")
+        if user_pseudocode:
+            print(f"   Pseudo:   {user_pseudocode[:80]}..." if len(user_pseudocode) > 80 else f"   Pseudo:   {user_pseudocode}")
+        print()
 
     # Run pipeline
     orchestrator = Orchestrator(llm_client=llm_client, config=config)
@@ -634,6 +644,16 @@ def _print_write_report(report: dict):
 def main():
     parser = build_parser()
     args = parser.parse_args()
+
+    # Handle --quiet mode: implies --yes --json, suppress TUI
+    if args.quiet:
+        args.yes = True
+        args.json = True
+        # Redirect all TUI/logging to stderr so only JSON hits stdout
+        import logging
+        for handler in logging.root.handlers[:]:
+            handler.stream = sys.stderr
+        os.environ["MACRO_QUIET"] = "1"
 
     # Handle --setup wizard
     if args.setup:
