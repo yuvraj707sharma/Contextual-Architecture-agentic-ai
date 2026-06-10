@@ -79,6 +79,120 @@ class LLMResponse:
     finish_reason: str
     raw_response: Optional[Dict[str, Any]] = None
 
+    def __post_init__(self):
+        # Automatically scrub any reasoning/thinking blocks from the content
+        try:
+            from .think_scrubber import StreamingThinkScrubber
+            scrubber = StreamingThinkScrubber()
+            self.content = scrubber.feed(self.content) + scrubber.flush()
+        except Exception:
+            pass
+
+
+def _repair_message_sequence(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Sanitize and repair a list of conversation messages.
+    
+    Ensures strict alternation (user/tool -> assistant -> user/tool) and
+    prunes invalid structures or illegal keys before sending to strict APIs.
+    """
+    if not messages:
+        return []
+        
+    repaired = []
+    
+    # Filter out system messages
+    non_system = [m for m in messages if m.get("role") != "system"]
+    
+    # Track open tool calls to insert stubs for missing results
+    pending_tool_calls = {}  # id -> tool_name
+    
+    for msg in non_system:
+        # Create a clean copy and strip unrecognized keys
+        clean_msg = {
+            "role": msg.get("role", "user"),
+            "content": msg.get("content", "") or "",
+        }
+        if "tool_calls" in msg:
+            clean_msg["tool_calls"] = msg["tool_calls"]
+        if "tool_call_id" in msg:
+            clean_msg["tool_call_id"] = msg["tool_call_id"]
+        if "name" in msg:
+            clean_msg["name"] = msg["name"]
+            
+        role = clean_msg["role"]
+        
+        # Track tool calls made by assistant
+        if role == "assistant" and "tool_calls" in clean_msg:
+            for tc in clean_msg["tool_calls"]:
+                tc_id = tc.get("id")
+                if tc_id:
+                    pending_tool_calls[tc_id] = tc.get("name", "unknown")
+                    
+        # Check if this is a tool result
+        if role == "tool":
+            tc_id = clean_msg.get("tool_call_id")
+            if tc_id in pending_tool_calls:
+                del pending_tool_calls[tc_id]
+            else:
+                # Orphaned tool call! Insert a dummy assistant message with this tool call first
+                dummy_id = tc_id or f"dummy_{len(pending_tool_calls)}"
+                repaired.append({
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [{
+                        "id": dummy_id,
+                        "type": "function",
+                        "function": {
+                            "name": clean_msg.get("name", "unknown"),
+                            "arguments": "{}",
+                        }
+                    }]
+                })
+                clean_msg["tool_call_id"] = dummy_id
+                
+        # Handle consecutive roles
+        if repaired:
+            last_msg = repaired[-1]
+            last_role = last_msg["role"]
+            
+            if role == last_role:
+                # Merge consecutive identical roles
+                if role == "user":
+                    last_msg["content"] = (last_msg["content"] + "\n\n" + clean_msg["content"]).strip()
+                    continue
+                elif role == "assistant":
+                    # Merge content and tool calls
+                    last_msg["content"] = (last_msg["content"] + "\n\n" + clean_msg["content"]).strip()
+                    if "tool_calls" in clean_msg:
+                        last_msg.setdefault("tool_calls", []).extend(clean_msg["tool_calls"])
+                    continue
+                elif role == "tool":
+                    # Keep consecutive tool messages
+                    pass
+            
+            # Strict alternation
+            if last_role in ("user", "tool") and role in ("user", "tool"):
+                # Insert a dummy assistant message to alternate
+                repaired.append({
+                    "role": "assistant",
+                    "content": "Continuing analysis...",
+                })
+            elif last_role == "assistant" and role == "assistant":
+                continue
+                
+        repaired.append(clean_msg)
+        
+    # Insert dummy results for any tool calls that were never answered
+    for tc_id, tool_name in list(pending_tool_calls.items()):
+        repaired.append({
+            "role": "tool",
+            "tool_call_id": tc_id,
+            "name": tool_name,
+            "content": "Error: Tool execution failed to return a result.",
+        })
+        
+    return repaired
+
 
 class BaseLLMClient(ABC):
     """Abstract base class for all LLM clients."""
@@ -403,7 +517,8 @@ class AnthropicClient(BaseLLMClient):
         system = ""
         anthropic_messages = []
 
-        for msg in messages:
+        repaired_messages = _repair_message_sequence(messages)
+        for msg in repaired_messages:
             role = msg.get("role", "user")
             content = msg.get("content", "")
 
@@ -475,7 +590,15 @@ class AnthropicClient(BaseLLMClient):
 
         if tool_calls:
             return {"tool_calls": tool_calls}
-        return {"content": "\n".join(text_parts)}
+            
+        content = "\n".join(text_parts)
+        try:
+            from .think_scrubber import StreamingThinkScrubber
+            scrubber = StreamingThinkScrubber()
+            content = scrubber.feed(content) + scrubber.flush()
+        except Exception:
+            pass
+        return {"content": content}
 
 
 class GeminiClient(BaseLLMClient):
@@ -608,7 +731,8 @@ class GeminiClient(BaseLLMClient):
         system_instruction = ""
         contents = []
 
-        for msg in messages:
+        repaired_messages = _repair_message_sequence(messages)
+        for msg in repaired_messages:
             role = msg.get("role", "user")
             content = msg.get("content", "")
 
@@ -680,9 +804,23 @@ class GeminiClient(BaseLLMClient):
                 if tool_calls:
                     return {"tool_calls": tool_calls}
                 if text_parts:
-                    return {"content": "\n".join(text_parts)}
+                    content = "\n".join(text_parts)
+                    try:
+                        from .think_scrubber import StreamingThinkScrubber
+                        scrubber = StreamingThinkScrubber()
+                        content = scrubber.feed(content) + scrubber.flush()
+                    except Exception:
+                        pass
+                    return {"content": content}
 
-        return {"content": response.text or ""}
+        content = response.text or ""
+        try:
+            from .think_scrubber import StreamingThinkScrubber
+            scrubber = StreamingThinkScrubber()
+            content = scrubber.feed(content) + scrubber.flush()
+        except Exception:
+            pass
+        return {"content": content}
 
 
 class GroqClient(BaseLLMClient):

@@ -65,6 +65,9 @@ class HistorianOutput:
     # Warnings about common mistakes in this codebase
     common_mistakes: List[str] = field(default_factory=list)
 
+    # Persistent repository memory (MEMORY.md)
+    repository_memory: str = ""
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "patterns": [p.to_dict() for p in self.patterns],
@@ -72,6 +75,7 @@ class HistorianOutput:
             "relevant_prs": self.relevant_prs,
             "related_files": self.related_files,
             "common_mistakes": self.common_mistakes,
+            "repository_memory": self.repository_memory,
         }
 
     def to_prompt_context(self, max_tokens: int = 0) -> str:
@@ -82,6 +86,11 @@ class HistorianOutput:
                         Patterns are included in relevance order (highest first).
         """
         parts = []
+
+        if self.repository_memory:
+            parts.append("## Persistent Repository Memory (Conventions & Rules)")
+            parts.append(self.repository_memory)
+            parts.append("")
 
         if self.patterns:
             parts.append("## Detected Patterns")
@@ -187,6 +196,16 @@ class HistorianAgent(BaseAgent):
                         )
         except Exception:
             pass  # Feedback is optional — never block the pipeline
+
+        # Load persistent repository memory (.contextual-architect/MEMORY.md)
+        if context.repo_path:
+            try:
+                memory_file = Path(context.repo_path) / ".contextual-architect" / "MEMORY.md"
+                if memory_file.exists():
+                    output.repository_memory = memory_file.read_text(encoding="utf-8", errors="ignore")
+                    context.prior_context["repository_memory"] = output.repository_memory
+            except Exception:
+                pass  # Optional — never block the pipeline
 
         try:
             # Step 1: Search for relevant PRs (if GitHub client available)
