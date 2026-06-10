@@ -36,8 +36,10 @@ class AgentConfig:
     # If set, these override llm_provider for specific agents.
     # Smart agents (planner, implementer) can use a better model.
     planner_provider: Optional[str] = None
+    planner_model: Optional[str] = None
     planner_api_key: Optional[str] = None
     implementer_provider: Optional[str] = None
+    implementer_model: Optional[str] = None
     implementer_api_key: Optional[str] = None
 
     # ── Pipeline ─────────────────────────────────────────
@@ -178,6 +180,10 @@ class AgentConfig:
             "CA_LLM_TEMPERATURE": ("llm_temperature", float),
             "CA_LLM_MAX_TOKENS": ("llm_max_tokens", int),
             "CA_LLM_API_KEY": ("llm_api_key", str),
+            "CA_PLANNER_PROVIDER": ("planner_provider", str),
+            "CA_PLANNER_MODEL": ("planner_model", str),
+            "CA_IMPLEMENTER_PROVIDER": ("implementer_provider", str),
+            "CA_IMPLEMENTER_MODEL": ("implementer_model", str),
             "CA_MAX_RETRIES": ("max_retries", int),
             "CA_AUTO_APPROVE_NEW_FILES": ("auto_approve_new_files", _parse_bool),
             "CA_USE_EXTERNAL_TOOLS": ("use_external_tools", _parse_bool),
@@ -319,6 +325,10 @@ class AgentConfig:
             "CA_LLM_PROVIDER": "llm_provider",
             "CA_LLM_MODEL": "llm_model",
             "CA_LLM_API_KEY": "llm_api_key",
+            "CA_PLANNER_PROVIDER": "planner_provider",
+            "CA_PLANNER_MODEL": "planner_model",
+            "CA_IMPLEMENTER_PROVIDER": "implementer_provider",
+            "CA_IMPLEMENTER_MODEL": "implementer_model",
             "CA_LLM_TEMPERATURE": "llm_temperature",
             "CA_LLM_MAX_TOKENS": "llm_max_tokens",
             "CA_MAX_RETRIES": "max_retries",

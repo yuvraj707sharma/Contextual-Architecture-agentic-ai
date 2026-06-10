@@ -133,9 +133,13 @@ class Orchestrator:
         if self.config.planner_provider:
             try:
                 from .llm_client import create_llm_client
+                planner_api_key = self.config.planner_api_key
+                if not planner_api_key and self.config.planner_provider == self.config.llm_provider:
+                    planner_api_key = self.config.llm_api_key
                 planner_client = create_llm_client(
                     provider=self.config.planner_provider,
-                    api_key=self.config.planner_api_key,
+                    model=self.config.planner_model or self.config.llm_model,
+                    api_key=planner_api_key,
                 )
                 self.logger.info(
                     f"Planner using: {self.config.planner_provider} "
@@ -152,9 +156,13 @@ class Orchestrator:
         if self.config.implementer_provider:
             try:
                 from .llm_client import create_llm_client
+                implementer_api_key = self.config.implementer_api_key
+                if not implementer_api_key and self.config.implementer_provider == self.config.llm_provider:
+                    implementer_api_key = self.config.llm_api_key
                 implementer_client = create_llm_client(
                     provider=self.config.implementer_provider,
-                    api_key=self.config.implementer_api_key,
+                    model=self.config.implementer_model or self.config.llm_model,
+                    api_key=implementer_api_key,
                 )
                 self.logger.info(
                     f"Implementer using: {self.config.implementer_provider} "
@@ -236,6 +244,29 @@ class Orchestrator:
         Returns:
             OrchestrationResult with generated code and changeset
         """
+        result = OrchestrationResult(success=False)
+        try:
+            result = await self._run_impl(
+                user_request=user_request,
+                repo_path=repo_path,
+                language=language,
+                user_pseudocode=user_pseudocode,
+                skip_test_generation=skip_test_generation,
+                run_existing_tests=run_existing_tests,
+            )
+            return result
+        finally:
+            self.reasoning.stop(success=result.success)
+
+    async def _run_impl(
+        self,
+        user_request: str,
+        repo_path: str,
+        language: str = "python",
+        user_pseudocode: str = None,
+        skip_test_generation: bool = False,
+        run_existing_tests: str = "",
+    ) -> OrchestrationResult:
         result = OrchestrationResult(success=False)
         metrics = PipelineMetrics()
         pipeline_start = time.perf_counter()

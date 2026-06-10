@@ -79,6 +79,120 @@ class LLMResponse:
     finish_reason: str
     raw_response: Optional[Dict[str, Any]] = None
 
+    def __post_init__(self):
+        # Automatically scrub any reasoning/thinking blocks from the content
+        try:
+            from .think_scrubber import StreamingThinkScrubber
+            scrubber = StreamingThinkScrubber()
+            self.content = scrubber.feed(self.content) + scrubber.flush()
+        except Exception:
+            pass
+
+
+def _repair_message_sequence(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Sanitize and repair a list of conversation messages.
+    
+    Ensures strict alternation (user/tool -> assistant -> user/tool) and
+    prunes invalid structures or illegal keys before sending to strict APIs.
+    """
+    if not messages:
+        return []
+        
+    repaired = []
+    
+    # Filter out system messages
+    non_system = [m for m in messages if m.get("role") != "system"]
+    
+    # Track open tool calls to insert stubs for missing results
+    pending_tool_calls = {}  # id -> tool_name
+    
+    for msg in non_system:
+        # Create a clean copy and strip unrecognized keys
+        clean_msg = {
+            "role": msg.get("role", "user"),
+            "content": msg.get("content", "") or "",
+        }
+        if "tool_calls" in msg:
+            clean_msg["tool_calls"] = msg["tool_calls"]
+        if "tool_call_id" in msg:
+            clean_msg["tool_call_id"] = msg["tool_call_id"]
+        if "name" in msg:
+            clean_msg["name"] = msg["name"]
+            
+        role = clean_msg["role"]
+        
+        # Track tool calls made by assistant
+        if role == "assistant" and "tool_calls" in clean_msg:
+            for tc in clean_msg["tool_calls"]:
+                tc_id = tc.get("id")
+                if tc_id:
+                    pending_tool_calls[tc_id] = tc.get("name", "unknown")
+                    
+        # Check if this is a tool result
+        if role == "tool":
+            tc_id = clean_msg.get("tool_call_id")
+            if tc_id in pending_tool_calls:
+                del pending_tool_calls[tc_id]
+            else:
+                # Orphaned tool call! Insert a dummy assistant message with this tool call first
+                dummy_id = tc_id or f"dummy_{len(pending_tool_calls)}"
+                repaired.append({
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [{
+                        "id": dummy_id,
+                        "type": "function",
+                        "function": {
+                            "name": clean_msg.get("name", "unknown"),
+                            "arguments": "{}",
+                        }
+                    }]
+                })
+                clean_msg["tool_call_id"] = dummy_id
+                
+        # Handle consecutive roles
+        if repaired:
+            last_msg = repaired[-1]
+            last_role = last_msg["role"]
+            
+            if role == last_role:
+                # Merge consecutive identical roles
+                if role == "user":
+                    last_msg["content"] = (last_msg["content"] + "\n\n" + clean_msg["content"]).strip()
+                    continue
+                elif role == "assistant":
+                    # Merge content and tool calls
+                    last_msg["content"] = (last_msg["content"] + "\n\n" + clean_msg["content"]).strip()
+                    if "tool_calls" in clean_msg:
+                        last_msg.setdefault("tool_calls", []).extend(clean_msg["tool_calls"])
+                    continue
+                elif role == "tool":
+                    # Keep consecutive tool messages
+                    pass
+            
+            # Strict alternation
+            if last_role in ("user", "tool") and role in ("user", "tool"):
+                # Insert a dummy assistant message to alternate
+                repaired.append({
+                    "role": "assistant",
+                    "content": "Continuing analysis...",
+                })
+            elif last_role == "assistant" and role == "assistant":
+                continue
+                
+        repaired.append(clean_msg)
+        
+    # Insert dummy results for any tool calls that were never answered
+    for tc_id, tool_name in list(pending_tool_calls.items()):
+        repaired.append({
+            "role": "tool",
+            "tool_call_id": tc_id,
+            "name": tool_name,
+            "content": "Error: Tool execution failed to return a result.",
+        })
+        
+    return repaired
+
 
 class BaseLLMClient(ABC):
     """Abstract base class for all LLM clients."""
@@ -378,6 +492,114 @@ class AnthropicClient(BaseLLMClient):
             raw_response=data,
         )
 
+    async def generate_with_tools(
+        self,
+        messages: List[Dict[str, Any]],
+        tools: List[Dict[str, Any]],
+        temperature: float = 0.1,
+    ) -> Dict[str, Any]:
+        """Generate with native Anthropic tool use.
+
+        Claude has excellent native tool calling support.
+        Converts MACRO tool schemas to Anthropic format.
+        """
+        # Convert MACRO tool schemas to Anthropic format
+        anthropic_tools = []
+        for tool in tools:
+            func = tool.get("function", tool)
+            anthropic_tools.append({
+                "name": func["name"],
+                "description": func.get("description", ""),
+                "input_schema": func.get("parameters", {"type": "object", "properties": {}}),
+            })
+
+        # Build Anthropic messages from MACRO format
+        system = ""
+        anthropic_messages = []
+
+        repaired_messages = _repair_message_sequence(messages)
+        for msg in repaired_messages:
+            role = msg.get("role", "user")
+            content = msg.get("content", "")
+
+            if role == "system":
+                system = content
+            elif role == "user":
+                anthropic_messages.append({"role": "user", "content": content})
+            elif role == "assistant":
+                if msg.get("tool_calls"):
+                    # Assistant requesting tool use
+                    blocks = []
+                    for tc in msg["tool_calls"]:
+                        blocks.append({
+                            "type": "tool_use",
+                            "id": tc.get("id", ""),
+                            "name": tc.get("name", ""),
+                            "input": tc.get("arguments", {}),
+                        })
+                    anthropic_messages.append({"role": "assistant", "content": blocks})
+                elif content:
+                    anthropic_messages.append({"role": "assistant", "content": content})
+            elif role == "tool":
+                # Tool result
+                anthropic_messages.append({
+                    "role": "user",
+                    "content": [{
+                        "type": "tool_result",
+                        "tool_use_id": msg.get("tool_call_id", ""),
+                        "content": content,
+                    }],
+                })
+
+        async def _call():
+            response = await self._client.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": self.api_key,
+                    "anthropic-version": "2023-06-01",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": self.model,
+                    "system": system,
+                    "messages": anthropic_messages,
+                    "tools": anthropic_tools,
+                    "temperature": temperature,
+                    "max_tokens": 8192,
+                },
+            )
+            response.raise_for_status()
+            return response.json()
+
+        data = await _retry_request(_call)
+
+        # Parse response — check for tool_use blocks
+        content_blocks = data.get("content", [])
+        tool_calls = []
+        text_parts = []
+
+        for block in content_blocks:
+            if block.get("type") == "tool_use":
+                tool_calls.append({
+                    "id": block.get("id", ""),
+                    "name": block.get("name", ""),
+                    "arguments": block.get("input", {}),
+                })
+            elif block.get("type") == "text":
+                text_parts.append(block.get("text", ""))
+
+        if tool_calls:
+            return {"tool_calls": tool_calls}
+            
+        content = "\n".join(text_parts)
+        try:
+            from .think_scrubber import StreamingThinkScrubber
+            scrubber = StreamingThinkScrubber()
+            content = scrubber.feed(content) + scrubber.flush()
+        except Exception:
+            pass
+        return {"content": content}
+
 
 class GeminiClient(BaseLLMClient):
     """
@@ -447,6 +669,158 @@ class GeminiClient(BaseLLMClient):
             usage=usage,
             finish_reason="stop",
         )
+
+    async def generate_with_tools(
+        self,
+        messages: List[Dict[str, Any]],
+        tools: List[Dict[str, Any]],
+        temperature: float = 0.1,
+    ) -> Dict[str, Any]:
+        """Generate with native Gemini function calling.
+
+        Args:
+            messages: Conversation history [{role, content, ...}]
+            tools: MACRO tool schemas (OpenAI-compatible format)
+            temperature: Generation temperature
+
+        Returns:
+            Dict with either 'content' (final answer) or 'tool_calls' (list)
+        """
+        try:
+            from google import genai
+            from google.genai import types
+        except ImportError:
+            raise ImportError(
+                "Google Gemini SDK not installed. Run: pip install google-genai"
+            )
+
+        client = genai.Client(api_key=self.api_key)
+
+        # Convert MACRO tool schemas to Gemini format
+        gemini_tools = []
+        for tool in tools:
+            func = tool.get("function", tool)
+            props = {}
+            required = []
+            params = func.get("parameters", {})
+            for pname, pdef in params.get("properties", {}).items():
+                ptype = pdef.get("type", "string").upper()
+                if ptype == "INTEGER":
+                    ptype = "NUMBER"
+                props[pname] = types.Schema(
+                    type=ptype,
+                    description=pdef.get("description", ""),
+                )
+            required = params.get("required", [])
+
+            gemini_tools.append(types.Tool(
+                function_declarations=[
+                    types.FunctionDeclaration(
+                        name=func["name"],
+                        description=func.get("description", ""),
+                        parameters=types.Schema(
+                            type="OBJECT",
+                            properties=props,
+                            required=required,
+                        ) if props else None,
+                    )
+                ]
+            ))
+
+        # Build Gemini contents from messages
+        system_instruction = ""
+        contents = []
+
+        repaired_messages = _repair_message_sequence(messages)
+        for msg in repaired_messages:
+            role = msg.get("role", "user")
+            content = msg.get("content", "")
+
+            if role == "system":
+                system_instruction = content
+            elif role == "user":
+                contents.append(types.Content(
+                    role="user",
+                    parts=[types.Part.from_text(text=content)],
+                ))
+            elif role == "tool":
+                # Tool response
+                tool_name = msg.get("name", "unknown")
+                contents.append(types.Content(
+                    role="user",
+                    parts=[types.Part.from_function_response(
+                        name=tool_name,
+                        response={"result": content},
+                    )],
+                ))
+            elif role == "assistant":
+                if msg.get("tool_calls"):
+                    # Assistant's tool call request
+                    parts = []
+                    for tc in msg["tool_calls"]:
+                        parts.append(types.Part.from_function_call(
+                            name=tc.get("name", ""),
+                            args=tc.get("arguments", {}),
+                        ))
+                    contents.append(types.Content(role="model", parts=parts))
+                elif content:
+                    contents.append(types.Content(
+                        role="model",
+                        parts=[types.Part.from_text(text=content)],
+                    ))
+
+        # Call Gemini
+        config = types.GenerateContentConfig(
+            temperature=temperature,
+            max_output_tokens=8192,
+            system_instruction=system_instruction if system_instruction else None,
+            tools=gemini_tools if gemini_tools else None,
+        )
+
+        response = client.models.generate_content(
+            model=self.model,
+            contents=contents,
+            config=config,
+        )
+
+        # Parse response — check for function calls
+        if response.candidates and response.candidates[0].content:
+            parts = response.candidates[0].content.parts
+            if parts:
+                tool_calls = []
+                text_parts = []
+
+                for part in parts:
+                    if part.function_call:
+                        fc = part.function_call
+                        tool_calls.append({
+                            "id": f"gemini_{fc.name}_{id(fc)}",
+                            "name": fc.name,
+                            "arguments": dict(fc.args) if fc.args else {},
+                        })
+                    elif part.text:
+                        text_parts.append(part.text)
+
+                if tool_calls:
+                    return {"tool_calls": tool_calls}
+                if text_parts:
+                    content = "\n".join(text_parts)
+                    try:
+                        from .think_scrubber import StreamingThinkScrubber
+                        scrubber = StreamingThinkScrubber()
+                        content = scrubber.feed(content) + scrubber.flush()
+                    except Exception:
+                        pass
+                    return {"content": content}
+
+        content = response.text or ""
+        try:
+            from .think_scrubber import StreamingThinkScrubber
+            scrubber = StreamingThinkScrubber()
+            content = scrubber.feed(content) + scrubber.flush()
+        except Exception:
+            pass
+        return {"content": content}
 
 
 class GroqClient(BaseLLMClient):

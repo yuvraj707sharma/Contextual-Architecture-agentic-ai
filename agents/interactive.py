@@ -72,47 +72,67 @@ def _can_render_unicode() -> bool:
 
 
 def print_banner(repo_path: str, provider: str, lang: str, config: AgentConfig):
-    """Print the startup banner — Rich bordered panel with pipeline."""
+    """Print the startup banner with ASCII art logo."""
     width = min(shutil.get_terminal_size().columns - 4, 80)
+
+    # ASCII art MACRO logo — royal blue → gold gradient
+    logo_art = (
+        "[bold #4169E1]  \u2588\u2588\u2588\u2557   \u2588\u2588\u2588\u2557[/][bold #5a6fcc] \u2588\u2588\u2588\u2588\u2588\u2557 [/][bold #7375b7] \u2588\u2588\u2588\u2588\u2588\u2588\u2557[/][bold #8c7ba2]\u2588\u2588\u2588\u2588\u2588\u2588\u2557 [/][bold #a5818d] \u2588\u2588\u2588\u2588\u2588\u2588\u2557[/]\n"
+        "[bold #4169E1]  \u2588\u2588\u2588\u2588\u2557 \u2588\u2588\u2588\u2588\u2551[/][bold #5a6fcc]\u2588\u2588\u2554\u2550\u2550\u2588\u2588\u2557[/][bold #7375b7]\u2588\u2588\u2554\u2550\u2550\u2550\u2550\u255d[/][bold #8c7ba2]\u2588\u2588\u2554\u2550\u2550\u2588\u2588\u2557[/][bold #a5818d]\u2588\u2588\u2554\u2550\u2550\u2550\u2588\u2588\u2557[/]\n"
+        "[bold #6B7DC8]  \u2588\u2588\u2554\u2588\u2588\u2588\u2588\u2554\u2588\u2588\u2551[/][bold #8a83a3]\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2551[/][bold #a9897e]\u2588\u2588\u2551     [/][bold #c88f59]\u2588\u2588\u2588\u2588\u2588\u2588\u2554\u255d[/][bold #DAA520]\u2588\u2588\u2551   \u2588\u2588\u2551[/]\n"
+        "[bold #8a83a3]  \u2588\u2588\u2551\u255a\u2588\u2588\u2554\u255d\u2588\u2588\u2551[/][bold #a9897e]\u2588\u2588\u2554\u2550\u2550\u2588\u2588\u2551[/][bold #c88f59]\u2588\u2588\u2551     [/][bold #DAA520]\u2588\u2588\u2554\u2550\u2550\u2588\u2588\u2557[/][bold #E8B828]\u2588\u2588\u2551   \u2588\u2588\u2551[/]\n"
+        "[bold #c88f59]  \u2588\u2588\u2551 \u255a\u2550\u255d \u2588\u2588\u2551[/][bold #DAA520]\u2588\u2588\u2551  \u2588\u2588\u2551[/][bold #E8B828]\u255a\u2588\u2588\u2588\u2588\u2588\u2588\u2557[/][bold #F5C631]\u2588\u2588\u2551  \u2588\u2588\u2551[/][bold #FFD700]\u255a\u2588\u2588\u2588\u2588\u2588\u2588\u2554\u255d[/]\n"
+        "[dim #c88f59]  \u255a\u2550\u255d     \u255a\u2550\u255d[/][dim #DAA520]\u255a\u2550\u255d  \u255a\u2550\u255d[/][dim #E8B828] \u255a\u2550\u2550\u2550\u2550\u2550\u255d[/][dim #F5C631]\u255a\u2550\u255d  \u255a\u2550\u255d[/][dim #FFD700] \u255a\u2550\u2550\u2550\u2550\u2550\u255d[/]\n"
+        "[dim]  Multi-Agent Contextual Repository Orchestrator[/]"
+    )
+
+    # Only show logo if terminal is wide enough
+    if width >= 52:
+        console.print()
+        console.print(logo_art)
 
     # Build the title line
     title = Text()
     title.append("macro", style="bold cyan")
     title.append(" v0.3.0", style="dim")
-    title.append("  ·  ", style="dim")
-    title.append(provider, style="bold green")
-    title.append("  ·  ", style="dim")
+    title.append("  \u00b7  ", style="dim")
     title.append(lang, style="cyan")
 
-    # Build the pipeline chain
-    pipeline = Text()
+    # Build inner content
+    inner = Text()
+    inner.append("  repo   ", style="dim")
+    inner.append(f"{repo_path}\n")
+
+    # Show both provider tiers
+    inner.append("  fast   ", style="dim")
+    inner.append(f"{provider}", style="green")
+    inner.append("  (chat, code gen)\n", style="dim")
+    if config.planner_provider:
+        inner.append("  smart  ", style="dim")
+        inner.append(f"{config.planner_provider}", style="bold green")
+        inner.append("  (agents, planning)\n", style="dim")
+    inner.append("\n")
+
+    # Pipeline stages
     stages = [
         ("scan", "cyan"), ("graph", "cyan"),
         ("plan", "green"), ("code", "yellow"),
         ("review", "red"), ("test", "cyan"),
         ("write", "green"),
     ]
+    inner.append("  ")
     for i, (name, color) in enumerate(stages):
-        pipeline.append(name, style=color)
+        inner.append(name, style=color)
         if i < len(stages) - 1:
-            pipeline.append(" → ", style="dim")
-
-    # Build inner content
-    inner = Text()
-    inner.append("  repo  ", style="dim")
-    inner.append(f"{repo_path}\n")
-    if config.planner_provider:
-        inner.append("  plan  ", style="dim")
-        inner.append(f"{config.planner_provider}")
-        inner.append("  (smart planner)\n", style="dim")
-    inner.append("\n")
-    inner.append_text(pipeline)
+            inner.append(" \u2192 ", style="dim")
     inner.append("\n\n")
-    inner.append("  ask  ", style="dim italic")
+
+    # Quick start hints
+    inner.append("  ask   ", style="dim italic")
     inner.append("questions about your code\n", style="dim")
-    inner.append("  build", style="dim italic")
-    inner.append(" type what you want to build\n", style="dim")
-    inner.append("  help ", style="dim italic")
+    inner.append("  build ", style="dim italic")
+    inner.append("type what you want to build\n", style="dim")
+    inner.append("  help  ", style="dim italic")
     inner.append("show all commands", style="dim")
 
     panel = Panel(
@@ -129,60 +149,78 @@ def print_banner(repo_path: str, provider: str, lang: str, config: AgentConfig):
 
 
 def print_help():
-    """Print available commands — Rich panels."""
+    """Print available commands — Rich panels with grouped sections."""
     width = min(shutil.get_terminal_size().columns - 4, 80)
 
-    # ── Commands table ──
-    cmd_table = Table(show_header=False, box=None, padding=(0, 2, 0, 0))
-    cmd_table.add_column(style="cyan bold", no_wrap=True)
-    cmd_table.add_column(style="dim")
-    cmd_table.add_row("/analyze", "Deep-scan the project (frameworks, CI, style, graph)")
-    cmd_table.add_row("/rules <text>", "Set session rules (e.g. GSoC constraints)")
-    cmd_table.add_row("/gsoc", "Toggle GSoC mode (skip test gen, run existing tests)")
-    cmd_table.add_row("/research <owner/repo>", "Research PR patterns from GitHub")
-    cmd_table.add_row("help", "Show this help message")
-    cmd_table.add_row("exit / quit", "End the session")
-    cmd_table.add_row("status", "Show current configuration")
-    cmd_table.add_row("config", "Show saved config path")
-    cmd_table.add_row("clear", "Clear the screen")
+    # ── Thinking Agents (smart provider) ──
+    agent_table = Table(
+        show_header=False, box=None, padding=(0, 2, 0, 0),
+    )
+    agent_table.add_column(style="bold cyan", no_wrap=True, width=12)
+    agent_table.add_column(style="dim")
+    agent_table.add_row("/explore", "Deep architecture analysis using AI exploration")
+    agent_table.add_row("/security", "Security audit with vulnerability detection")
+    agent_table.add_row("/style", "Coding convention analysis from real code")
 
     console.print(Panel(
-        cmd_table, title="[bold]Commands[/]",
+        agent_table,
+        title="[bold cyan]\u25c6 Thinking Agents[/]",
+        subtitle="[dim]uses smart provider[/]",
+        border_style="cyan", box=box.ROUNDED, width=width, padding=(0, 1),
+    ))
+
+    # ── Pipeline & Analysis ──
+    pipe_table = Table(
+        show_header=False, box=None, padding=(0, 2, 0, 0),
+    )
+    pipe_table.add_column(style="bold green", no_wrap=True, width=22)
+    pipe_table.add_column(style="dim")
+    pipe_table.add_row("/analyze", "Deep-scan project (frameworks, CI, style, graph)")
+    pipe_table.add_row("/research <owner/repo>", "Research PR patterns from GitHub")
+    pipe_table.add_row("/rules <text>", "Set session rules (e.g. GSoC constraints)")
+    pipe_table.add_row("/gsoc", "Toggle GSoC mode (skip test gen)")
+
+    console.print(Panel(
+        pipe_table,
+        title="[bold green]Pipeline & Analysis[/]",
+        border_style="green", box=box.ROUNDED, width=width, padding=(0, 1),
+    ))
+
+    # ── Session ──
+    sess_table = Table(
+        show_header=False, box=None, padding=(0, 2, 0, 0),
+    )
+    sess_table.add_column(style="bold", no_wrap=True, width=12)
+    sess_table.add_column(style="dim")
+    sess_table.add_row("help", "Show this help message")
+    sess_table.add_row("status", "Show current configuration")
+    sess_table.add_row("config", "Show saved config path")
+    sess_table.add_row("clear", "Clear the screen")
+    sess_table.add_row("exit", "End the session")
+
+    console.print(Panel(
+        sess_table,
+        title="[bold]Session[/]",
         border_style="dim", box=box.ROUNDED, width=width, padding=(0, 1),
     ))
 
-    # ── Usage ──
+    # ── Usage examples ──
     usage = Text()
-    usage.append("[?] Chat Mode", style="bold cyan")
-    usage.append(" — ask questions about your code:\n")
-    usage.append("  ❯ ", style="green")
-    usage.append("What does @Project_1.c do?\n")
-    usage.append("  ❯ ", style="green")
-    usage.append("Find bugs in @utils.py\n")
-    usage.append("\n")
-    usage.append("[+] Build Mode", style="bold yellow")
-    usage.append(" — generate code in plain English:\n")
-    usage.append("  ❯ ", style="green")
-    usage.append("Add user authentication\n")
-    usage.append("  ❯ ", style="green")
-    usage.append("Add binary search to @sorting.cpp\n")
-    usage.append("\n")
-    usage.append("[@] File References", style="bold magenta")
-    usage.append(" — target specific files:\n")
-    usage.append("  ❯ ", style="green")
-    usage.append("Add booking to @Movie_ticket_pricing.py\n")
-    usage.append("  Without @, a new file is created (in build mode).\n", style="dim")
-    usage.append("\n")
-    usage.append("Pseudocode (|||)", style="bold")
-    usage.append(" — control the logic:\n")
-    usage.append("  ❯ ", style="green")
-    usage.append("Add fibonacci ||| 1. Take n 2. Iterative 3. Print all\n")
-    usage.append("\n")
-    usage.append("Languages: ", style="bold")
-    usage.append("python │ cpp │ c │ go │ typescript │ javascript │ java", style="dim")
+    usage.append("[?] Chat", style="bold cyan")
+    usage.append(" \u2014 ")
+    usage.append("What does @utils.py do?\n", style="dim")
+    usage.append("[+] Build", style="bold yellow")
+    usage.append(" \u2014 ")
+    usage.append("Add user authentication\n", style="dim")
+    usage.append("[@] Target", style="bold magenta")
+    usage.append(" \u2014 ")
+    usage.append("Add booking to @Movie_ticket_pricing.py\n", style="dim")
+    usage.append("[|||] Pseudo", style="bold")
+    usage.append(" \u2014 ")
+    usage.append("Add fibonacci ||| 1. Take n 2. Iterative", style="dim")
 
     console.print(Panel(
-        usage, title="[bold]Usage[/]",
+        usage, title="[bold]Quick Start[/]",
         border_style="dim", box=box.ROUNDED, width=width, padding=(0, 1),
     ))
     console.print()
@@ -253,6 +291,10 @@ _QUESTION_PATTERNS = [
     r'^describe\b',
     r'^tell me\b',
     r'^show me\b',
+    r'^explore\b',
+    r'^walk me through\b',
+    r'^give me\b',
+    r'^help me understand\b',
     r'^is there\b',
     r'^does\b',
     r'^can you (explain|describe|show|tell)',
@@ -265,6 +307,13 @@ _QUESTION_PATTERNS = [
     r'^review\b',
     r'^analyze\b',
     r'^list\b',
+    r'\btell me\b',
+    r'\bexplain\b',
+    r'\bdescribe\b',
+    r'\bwhat is\b',
+    r'\bhow does\b',
+    r'\bwhat does\b',
+    r'\babout (this|the|my)\b',
     r'\?$',  # ends with question mark
 ]
 
@@ -302,18 +351,20 @@ def detect_intent(user_input: str) -> str:
     if _QUESTION_RE.search(text):
         return 'chat'
 
-    # Default to build
-    return 'build'
+    # Default to chat — most natural-language inputs are questions
+    # Users must use build keywords (add/create/implement/etc.) for code gen
+    return 'chat'
 
 
 # ── Chat Handler ──────────────────────────────────────────
 
-def _collect_file_contents(repo_path: str, user_input: str, lang: str, max_files: int = 5) -> str:
+def _collect_file_contents(repo_path: str, user_input: str, lang: str, max_files: int = 10) -> str:
     """
     Collect relevant file contents for answering a question.
 
-    If @files are mentioned, read those. Otherwise, read a few
-    representative files from the project.
+    Uses code graph intelligence to rank files by centrality (most-imported,
+    most-called files first) instead of random walking. Always includes
+    README.md and pyproject.toml for project overview context.
     """
     from pathlib import Path
 
@@ -326,52 +377,104 @@ def _collect_file_contents(repo_path: str, user_input: str, lang: str, max_files
 
     contents = []
     repo = Path(repo_path)
+    read_files: set = set()
 
-    # Check for @file references
+    # ── Always include project overview files (like Gemini CLI) ──
+    for overview_name in ['README.md', 'readme.md', 'README.rst',
+                          'pyproject.toml', 'package.json', 'Cargo.toml', 'go.mod']:
+        overview = repo / overview_name
+        if overview.exists() and overview.is_file():
+            try:
+                text = overview.read_text(encoding='utf-8', errors='ignore')[:4000]
+                contents.append(f"=== {overview_name} ===\n{text}")
+                read_files.add(overview_name)
+            except Exception:
+                pass
+
+    # ── Check for @file references ──
     file_refs = re.findall(r'@([\w/\\.-]+)', user_input)
 
     if file_refs:
-        # Read referenced files
         for ref in file_refs[:max_files]:
             fpath = repo / ref
-
-            # SECURITY: Block path traversal
             if not _is_safe_path(fpath, repo):
                 contents.append(f"=== {ref} === [BLOCKED: path traversal]")
                 continue
-
             if not fpath.exists():
-                # Try recursive search
                 for f in repo.rglob(Path(ref).name):
                     if '.contextual-architect' not in str(f) and _is_safe_path(f, repo):
                         fpath = f
                         break
             if fpath.exists() and fpath.is_file() and _is_safe_path(fpath, repo):
                 try:
-                    text = fpath.read_text(encoding='utf-8', errors='ignore')[:3000]
-                    rel = fpath.relative_to(repo)
-                    contents.append(f"=== {rel} ===\n{text}")
+                    text = fpath.read_text(encoding='utf-8', errors='ignore')[:5000]
+                    rel = str(fpath.relative_to(repo)).replace("\\", "/")
+                    if rel not in read_files:
+                        contents.append(f"=== {rel} ===\n{text}")
+                        read_files.add(rel)
                 except Exception:
                     pass
     else:
-        # No specific files mentioned — read a sample of project files
-        exts = LANG_EXT.get(lang, ['.py'])
-        collected = 0
-        for ext in exts:
-            for f in repo.rglob(f'*{ext}'):
-                if '.contextual-architect' in str(f):
-                    continue
-                if collected >= max_files:
-                    break
-                try:
-                    text = f.read_text(encoding='utf-8', errors='ignore')[:2000]
-                    rel = f.relative_to(repo)
-                    contents.append(f"=== {rel} ===\n{text}")
-                    collected += 1
-                except Exception:
-                    continue
+        # ── Graph-powered file ranking ──
+        file_scores: dict = {}
+        try:
+            from agents.graph_builder import build_repo_graph
+            graph = build_repo_graph(repo_path, max_files=500)
 
-    # Also include directory listing
+            for file_path_g in graph._file_nodes:
+                score = 0
+                importers = graph.files_importing(file_path_g)
+                score += len(importers) * 3
+
+                for node_key in graph._file_nodes.get(file_path_g, []):
+                    callers = graph._callers.get(node_key, set())
+                    external_callers = [
+                        c for c in callers
+                        if graph.nodes.get(c) and graph.nodes[c].file_path != file_path_g
+                    ]
+                    score += len(external_callers)
+
+                node_count = len(graph._file_nodes.get(file_path_g, []))
+                score += node_count // 5
+                file_scores[file_path_g] = score
+        except Exception:
+            pass
+
+        if file_scores:
+            ranked = sorted(file_scores.items(), key=lambda x: -x[1])
+            slots = max_files - len(read_files)
+            for file_path_g, score in ranked[:slots]:
+                if file_path_g in read_files:
+                    continue
+                abs_path = repo / file_path_g
+                if abs_path.exists() and abs_path.is_file():
+                    try:
+                        text = abs_path.read_text(encoding='utf-8', errors='ignore')[:5000]
+                        contents.append(f"=== {file_path_g} (centrality: {score}) ===\n{text}")
+                        read_files.add(file_path_g)
+                    except Exception:
+                        continue
+        else:
+            exts = LANG_EXT.get(lang, ['.py'])
+            collected = 0
+            for ext in exts:
+                for f in repo.rglob(f'*{ext}'):
+                    if '.contextual-architect' in str(f):
+                        continue
+                    rel = str(f.relative_to(repo)).replace("\\", "/")
+                    if rel in read_files:
+                        continue
+                    if collected >= max_files:
+                        break
+                    try:
+                        text = f.read_text(encoding='utf-8', errors='ignore')[:3000]
+                        contents.append(f"=== {rel} ===\n{text}")
+                        read_files.add(rel)
+                        collected += 1
+                    except Exception:
+                        continue
+
+    # ── Directory structure ──
     try:
         top_files = []
         for item in sorted(repo.iterdir()):
@@ -380,11 +483,12 @@ def _collect_file_contents(repo_path: str, user_input: str, lang: str, max_files
             kind = '[D]' if item.is_dir() else '[F]'
             top_files.append(f"  {kind} {item.name}")
         if top_files:
-            contents.insert(0, "=== Project Structure ===\n" + '\n'.join(top_files[:20]))
+            contents.insert(0, "=== Project Structure ===\n" + '\n'.join(top_files[:30]))
     except Exception:
         pass
 
     return '\n\n'.join(contents)
+
 
 
 async def handle_chat(
@@ -441,17 +545,17 @@ User question: {clean_question}
         # Clear the "Thinking..." line
         print("                        ", end='\r')
 
-        # Print the response with ◆ prefix
+        # Render as flowing markdown with ✦ marker (like Gemini CLI)
         answer = response.content.strip()
-        width = min(shutil.get_terminal_size().columns - 4, 80)
-        response_panel = Panel(
-            answer,
-            border_style="cyan",
-            box=box.ROUNDED,
-            width=width,
-            padding=(0, 1),
-        )
-        console.print(response_panel)
+        console.print()
+        console.print("[bold cyan]✦[/] ", end="")
+        try:
+            from rich.markdown import Markdown
+            md = Markdown(answer)
+            console.print(md)
+        except ImportError:
+            console.print(answer)
+        console.print()
     except Exception as e:
         console.print(f"  [bold red]❌ Chat error:[/] {e}")
         console.print()
@@ -621,6 +725,17 @@ def _handle_write_flow(changeset, repo_path: str):
                 )
             diff_content.append("\n")
 
+    # Prepend legend to proposed changes diff
+    legend_text = Text()
+    legend_text.append("  Legend: ", style="bold")
+    legend_text.append("+ Addition", style="green")
+    legend_text.append("  ")
+    legend_text.append("- Deletion", style="red")
+    legend_text.append("  ")
+    legend_text.append("@@ Section", style="cyan")
+    legend_text.append("\n  " + "─" * (width - 6) + "\n\n")
+    diff_content = legend_text + diff_content
+
     console.print(Panel(
         diff_content,
         title="[bold cyan]Proposed Changes[/]",
@@ -638,31 +753,43 @@ def _handle_write_flow(changeset, repo_path: str):
         _print_write_report(report)
         return
 
-    # Ask for approval
-    console.print(
-        r"  [bold]Options:[/] [cyan]\[a]pprove all[/] │ "
-        r"[cyan]\[1,2,3][/] approve specific │ [cyan]\[n]one[/]"
-    )
+    # Guided Ask for approval
+    console.print("  [bold]Apply changes?[/]")
+    console.print("    [green][y] Yes[/] (apply all changes)")
+    console.print("    [red][n] No[/] (skip and discard)")
+    console.print("    [cyan][s] Select[/] specific files (e.g., [cyan]1,3[/])")
+    
     try:
         choice = input(Colors.colored("  ❯ ", Colors.GREEN + Colors.BOLD)).strip().lower()
     except (KeyboardInterrupt, EOFError):
         console.print("  [yellow]Cancelled — no files written.[/]")
         return
 
-    if choice in ('a', 'y', 'yes', 'all'):
+    if choice in ('y', 'yes', 'a', 'all'):
         changeset.approve_all()
-    elif choice in ('n', 'no', 'none', 'q', 'quit'):
+    elif choice in ('n', 'no', 'q', 'quit', 'none'):
         console.print("  [dim]Skipped — no files written.[/]")
         return
+    elif choice in ('s', 'select'):
+        console.print("  Enter indices to approve (comma or space separated, e.g. [cyan]1,3[/]):")
+        try:
+            choice_indices = input(Colors.colored("  ❯ ", Colors.GREEN + Colors.BOLD)).strip().lower()
+            indices = [int(x.strip()) - 1 for x in choice_indices.replace(',', ' ').split()]
+            for c in changeset.safe_changes:
+                c.approved = True
+            changeset.approve_by_index(indices)
+        except ValueError:
+            console.print("  [yellow]Invalid input — no files written.[/]")
+            return
     else:
-        # Parse indices: "1,3" or "1 3"
+        # Fallback: support direct entry of indices (e.g. "1,3")
         try:
             indices = [int(x.strip()) - 1 for x in choice.replace(',', ' ').split()]
             for c in changeset.safe_changes:
                 c.approved = True
             changeset.approve_by_index(indices)
         except ValueError:
-            console.print("  [yellow]Invalid input — no files written.[/]")
+            console.print("  [yellow]Invalid choice — no files written.[/]")
             return
 
     # Apply
@@ -1069,9 +1196,30 @@ async def interactive_session(args) -> int:
         term_width = shutil.get_terminal_size().columns
         repo_name = Path(repo_path).name
         model_name = getattr(llm_client, 'model_name', provider)
+
+        # Try to get git branch
+        branch = ""
+        try:
+            import subprocess
+            result = subprocess.run(
+                ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                capture_output=True, text=True, cwd=repo_path,
+                timeout=2,
+            )
+            if result.returncode == 0:
+                branch = result.stdout.strip()
+        except Exception:
+            pass
+
         left = f"  {repo_name}"
-        right = f"{provider} · {model_name}  "
-        padding = term_width - len(left) - len(right)
+        right_parts = []
+        if branch:
+            right_parts.append(f"\033[33m{branch}\033[0m")
+        right_parts.append(f"{provider} \u00b7 {model_name}")
+        right = "  ".join(right_parts) + "  "
+        # Calculate padding (account for ANSI escape codes in right)
+        visible_right = right.replace("\033[33m", "").replace("\033[0m", "")
+        padding = term_width - len(left) - len(visible_right)
         if padding < 1:
             padding = 1
         footer = f"\033[2m{left}{' ' * padding}{right}\033[0m"
@@ -1084,19 +1232,28 @@ async def interactive_session(args) -> int:
         top = f"  ╭{'─' * inner_w}╮"
         bottom = f"  ╰{'─' * inner_w}╯"
         _print_footer()
-        print(Colors.colored(top, Colors.DIM))
+        print(Colors.colored(top, Colors.DIM), flush=True)
         try:
-            user_in = input(Colors.colored("  │ ", Colors.DIM) +
-                           Colors.colored("❯ ", Colors.GREEN + Colors.BOLD))
-        finally:
-            print(Colors.colored(bottom, Colors.DIM))
+            user_in = input(
+                Colors.colored("  │ ", Colors.DIM)
+                + Colors.colored("❯ ", Colors.GREEN + Colors.BOLD)
+            )
+        except (EOFError, KeyboardInterrupt):
+            print()  # newline after partial input
+            print(Colors.colored(bottom, Colors.DIM), flush=True)
+            raise
+        print(Colors.colored(bottom, Colors.DIM), flush=True)
         return user_in.strip()
 
     # Interactive loop
     while True:
         try:
             # Bordered input prompt
-            user_input = _bordered_input()
+            try:
+                user_input = _bordered_input()
+            except (KeyboardInterrupt, EOFError):
+                console.print(f"\n  [dim]Session ended. {request_count} requests processed.[/]\n")
+                return 0
 
             if not user_input:
                 continue
@@ -1137,6 +1294,106 @@ async def interactive_session(args) -> int:
                         ci_test_cmd = snapshot.ci_test_command
                 except Exception as e:
                     console.print(f"  [bold red]❌ Analysis error:[/] {e}")
+                console.print()
+                continue
+
+            elif cmd in ("/explore", "/security", "/style"):
+                # ── Thinking Agent Commands ────────────────
+                agent_key = cmd.lstrip("/")
+                try:
+                    from .agent_personas import AGENT_PERSONAS
+                    from .thinking_agent import ThinkingAgent
+
+                    persona_data = AGENT_PERSONAS.get(agent_key)
+                    if not persona_data:
+                        persona_data = AGENT_PERSONAS.get("explorer")
+
+                    console.print(
+                        f"\n  [bold cyan]◆ {persona_data['name']} Agent[/] "
+                        f"[dim]{persona_data['description']}[/]"
+                    )
+
+                    # Use the SMART provider (planner) for thinking agents
+                    # Gemini/Sonnet think deeper than Groq/Llama
+                    smart_client = llm_client  # fallback to main
+                    if config.planner_provider and config.planner_provider != provider:
+                        try:
+                            smart_client = create_llm_client(
+                                provider=config.planner_provider,
+                                api_key=config.planner_api_key,
+                            )
+                            console.print(
+                                f"  [dim]Using smart provider: "
+                                f"{smart_client.model_name}[/]"
+                            )
+                        except Exception:
+                            smart_client = llm_client  # fallback
+
+                    agent = ThinkingAgent(
+                        name=persona_data["name"],
+                        persona=persona_data["persona"],
+                        llm_client=smart_client,
+                        repo_path=str(repo_path),
+                        verbose=verbose,
+                    )
+
+                    # Determine the task based on agent type
+                    repo_name = Path(repo_path).name
+                    task_map = {
+                        "explore": (
+                            f"Perform a comprehensive architecture analysis of the {repo_name} project. "
+                            f"Map the package structure, identify core modules, understand data flow, "
+                            f"and document key abstractions."
+                        ),
+                        "security": (
+                            f"Perform a security audit of the {repo_name} project. "
+                            f"Look for vulnerabilities, bad practices, hardcoded secrets, "
+                            f"injection risks, and insecure patterns."
+                        ),
+                        "style": (
+                            f"Analyze the coding style and conventions of the {repo_name} project. "
+                            f"Document naming conventions, file organization, error handling patterns, "
+                            f"docstring style, and OOP practices with real examples."
+                        ),
+                    }
+
+                    import threading
+
+                    result_holder = [None]
+                    error_holder = [None]
+
+                    def _run_agent():
+                        """Run async agent in a separate thread with its own event loop."""
+                        import asyncio as _aio
+                        new_loop = _aio.new_event_loop()
+                        _aio.set_event_loop(new_loop)
+                        try:
+                            result_holder[0] = new_loop.run_until_complete(
+                                agent.run(task_map.get(agent_key, task_map["explore"]))
+                            )
+                        except Exception as exc:
+                            error_holder[0] = exc
+                        finally:
+                            new_loop.close()
+
+                    thread = threading.Thread(target=_run_agent)
+                    thread.start()
+                    thread.join()  # Wait for agent to finish
+
+                    if error_holder[0]:
+                        raise error_holder[0]
+                    result = result_holder[0]
+
+                    if result:
+                        console.print(
+                            f"\n  [dim]📄 Report saved to "
+                            f".contextual-architect/reports/{persona_data['report_file']}[/]"
+                        )
+
+                except Exception as e:
+                    console.print(f"  [bold red]❌ Agent error:[/] {e}")
+                    import traceback
+                    traceback.print_exc()
                 console.print()
                 continue
 
@@ -1412,9 +1669,9 @@ async def interactive_session(args) -> int:
             print()
 
         except KeyboardInterrupt:
-            console.print(f"\n\n  [dim]Session ended. {request_count} requests processed.[/]\n")
+            # Already handled in _bordered_input catch above
             return 0
 
         except EOFError:
-            console.print(f"\n\n  [dim]Session ended. {request_count} requests processed.[/]\n")
+            # Already handled in _bordered_input catch above
             return 0

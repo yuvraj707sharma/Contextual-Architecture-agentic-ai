@@ -563,21 +563,40 @@ def _interactive_approval(changeset, repo_path: str):
             print(f"      ... {len(change.diff_lines) - 8} more lines")
         print()
 
+    print("  Legend: \033[32m+ Addition\033[0m  │  \033[31m- Deletion\033[0m")
+    print("  " + "─" * 40)
+    print()
+
     # Ask for approval
-    print("  Options: [a]pprove all | [1,2,3] approve specific | [n]one | [q]uit")
+    print("  Apply changes?")
+    print("    [y] Yes (apply all changes)")
+    print("    [n] No (skip and discard)")
+    print("    [s] Select specific files (e.g., 1,3)")
     try:
-        choice = input("  > ").strip().lower()
+        choice = input("  ❯ ").strip().lower()
     except (KeyboardInterrupt, EOFError):
         print("\n  Cancelled — no files written.")
         return
 
-    if choice in ('a', 'y', 'yes', 'all'):
+    if choice in ('y', 'yes', 'a', 'all'):
         changeset.approve_all()
     elif choice in ('n', 'no', 'none', 'q', 'quit'):
         print("  Skipped — no files written.")
         return
+    elif choice in ('s', 'select'):
+        print("  Enter indices to approve (comma or space separated, e.g. 1,3):")
+        try:
+            choice_indices = input("  ❯ ").strip().lower()
+            indices = [int(x.strip()) - 1 for x in choice_indices.replace(',', ' ').split()]
+            # Auto-approve safe changes, plus the selected ones
+            for c in changeset.safe_changes:
+                c.approved = True
+            changeset.approve_by_index(indices)
+        except ValueError:
+            print("  Invalid input — no files written.")
+            return
     else:
-        # Parse indices: "1,3" or "1 3"
+        # Fallback: support direct entry of indices (e.g. "1,3")
         try:
             indices = [int(x.strip()) - 1 for x in choice.replace(',', ' ').split()]
             # Auto-approve safe changes, plus the selected ones
@@ -585,7 +604,7 @@ def _interactive_approval(changeset, repo_path: str):
                 c.approved = True
             changeset.approve_by_index(indices)
         except ValueError:
-            print("  Invalid input — no files written.")
+            print("  Invalid choice — no files written.")
             return
 
     # Apply
