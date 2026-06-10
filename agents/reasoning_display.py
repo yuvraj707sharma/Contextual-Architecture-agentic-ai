@@ -26,6 +26,11 @@ from typing import Dict, List, Optional
 _HAS_RICH = False
 try:
     from rich.console import Console
+    from rich.live import Live
+    from rich.table import Table
+    from rich.panel import Panel
+    from rich.text import Text
+    from rich import box
     _HAS_RICH = True
 except ImportError:
     pass
@@ -104,6 +109,124 @@ class ReasoningDisplay:
         self._spinner_message = ""
         self._step_start: float = 0.0
 
+        # Live Stepper Dashboard State
+        self._live: Optional[Live] = None
+        self._start_time: float = 0.0
+        self._current_log_lines: List[str] = []
+        
+        self.steps_info = [
+            {"name": "Scan", "agents": ["scanner"], "status": "pending"},
+            {"name": "Graph", "agents": ["graph"], "status": "pending"},
+            {"name": "Plan", "agents": ["discovery", "historian", "architect", "planner", "alignment", "clarification"], "status": "pending"},
+            {"name": "Code", "agents": ["implementer"], "status": "pending"},
+            {"name": "Review", "agents": ["reviewer"], "status": "pending"},
+            {"name": "Test", "agents": ["test_generator", "test_runner"], "status": "pending"},
+            {"name": "Write", "agents": ["writer", "executor", "report"], "status": "pending"},
+        ]
+
+    def _update_stepper_status(self, agent: str, message: str):
+        # Find step containing this agent
+        step_idx = -1
+        for idx, step in enumerate(self.steps_info):
+            if agent in step["agents"]:
+                step_idx = idx
+                break
+        if step_idx == -1:
+            return
+
+        # Update preceding steps
+        for idx in range(step_idx):
+            if self.steps_info[idx]["status"] not in ("success", "failed"):
+                self.steps_info[idx]["status"] = "success"
+
+        # Mark current step as running
+        self.steps_info[step_idx]["status"] = "running"
+        self._spinner_message = message
+
+    def _render_dashboard(self) -> Panel:
+        # Build stepper text
+        stepper_parts = []
+        symbols = {
+            "pending": "[dim]⚬[/]",
+            "running": "[bold yellow]◷[/]",
+            "success": "[bold green]✔[/]",
+            "failed": "[bold red]✘[/]"
+        }
+        for step in self.steps_info:
+            symbol = symbols[step["status"]]
+            name = step["name"]
+            
+            if step["status"] == "running":
+                name_style = "bold yellow"
+            elif step["status"] == "success":
+                name_style = "bold green"
+            elif step["status"] == "failed":
+                name_style = "bold red"
+            else:
+                name_style = "dim"
+                
+            stepper_parts.append(f"{symbol} [{name_style}]{name}[/]")
+            
+        stepper_line = "  ➔  ".join(stepper_parts)
+        
+        # Activity line
+        elapsed = time.time() - self._start_time if self._start_time else 0
+        activity_text = f"[bold cyan]Activity:[/] {self._spinner_message or 'Processing...'} [dim]({elapsed:.1f}s)[/]"
+        
+        # Build body
+        body = Text()
+        body.append("\n")
+        body.append(Text.from_markup(f"  {stepper_line}\n\n"))
+        body.append(Text.from_markup(f"  {activity_text}\n\n"))
+        
+        if self._current_log_lines:
+            body.append(Text.from_markup("  [dim]Latest logs:[/]\n"))
+            for line in self._current_log_lines:
+                body.append(Text.from_markup(f"   {line}\n"))
+            
+        return Panel(
+            body,
+            title="[bold cyan]MACRO Pipeline Dashboard[/]",
+            border_style="cyan",
+            box=box.ROUNDED,
+            padding=(0, 1),
+            width=min(Console().width, 84),
+        )
+
+    def _start_live_display(self):
+        if not self.streaming or self.verbose or not _HAS_RICH or self._suppress:
+            return
+        if self._live is not None:
+            return
+        
+        # Reset statuses
+        for step in self.steps_info:
+            step["status"] = "pending"
+        self._current_log_lines = []
+        self._start_time = time.time()
+        
+        self._live = Live(
+            self._render_dashboard(),
+            console=self._console or Console(stderr=True),
+            refresh_per_second=10,
+            transient=False,
+        )
+        self._live.start()
+
+    def stop(self, success: bool = True):
+        """Stop the stepper display and mark all steps appropriately."""
+        self.stop_spinner()
+        if self._live is not None:
+            for step in self.steps_info:
+                if step["status"] == "running":
+                    step["status"] = "success" if success else "failed"
+                elif step["status"] == "pending":
+                    step["status"] = "success" if success else "pending"
+            
+            self._live.update(self._render_dashboard())
+            self._live.stop()
+            self._live = None
+
     def emit(self, agent: str, message: str, detail: str = ""):
         """Emit a reasoning step — clean, minimal output."""
         step = ReasoningStep(agent=agent, message=message, detail=detail)
@@ -119,6 +242,24 @@ class ReasoningDisplay:
         if self._suppress:
             return
 
+        # Handle Live Dashboard mode if streaming and not verbose
+        if self.streaming and not self.verbose and _HAS_RICH:
+            if self._live is None:
+                self._start_live_display()
+            
+            self._update_stepper_status(agent, message)
+            
+            # Add to the log lines buffer
+            style_info = AGENT_STYLES.get(agent, DEFAULT_STYLE)
+            log_line = f"[dim]▸ {agent.capitalize()}: {message}[/]"
+            self._current_log_lines.append(log_line)
+            if len(self._current_log_lines) > 4:
+                self._current_log_lines.pop(0)
+                
+            if self._live is not None:
+                self._live.update(self._render_dashboard())
+            return
+
         if self.streaming:
             self._print_step(step)
 
@@ -128,9 +269,15 @@ class ReasoningDisplay:
             return
 
         self._spinner_message = message
-        self._spinner_stop.clear()
         self._step_start = time.time()
 
+        # If live dashboard is running, just update message
+        if self._live is not None:
+            # Update current step's activity/message
+            self._live.update(self._render_dashboard())
+            return
+
+        self._spinner_stop.clear()
         if _HAS_RICH and self._console:
             self._start_rich_spinner(message)
         else:
@@ -138,8 +285,17 @@ class ReasoningDisplay:
 
     def stop_spinner(self, final_message: str = ""):
         """Stop the spinner and optionally print a completion message."""
-        self._spinner_stop.set()
+        if self._live is not None:
+            if final_message:
+                elapsed = time.time() - self._step_start if self._step_start else 0
+                log_line = f"[green]✔[/] {final_message} [dim]({elapsed:.1f}s)[/]"
+                self._current_log_lines.append(log_line)
+                if len(self._current_log_lines) > 4:
+                    self._current_log_lines.pop(0)
+                self._live.update(self._render_dashboard())
+            return
 
+        self._spinner_stop.set()
         elapsed = time.time() - self._step_start if self._step_start else 0
 
         if self._spinner_thread and self._spinner_thread.is_alive():

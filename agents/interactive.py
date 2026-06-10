@@ -725,6 +725,17 @@ def _handle_write_flow(changeset, repo_path: str):
                 )
             diff_content.append("\n")
 
+    # Prepend legend to proposed changes diff
+    legend_text = Text()
+    legend_text.append("  Legend: ", style="bold")
+    legend_text.append("+ Addition", style="green")
+    legend_text.append("  ")
+    legend_text.append("- Deletion", style="red")
+    legend_text.append("  ")
+    legend_text.append("@@ Section", style="cyan")
+    legend_text.append("\n  " + "─" * (width - 6) + "\n\n")
+    diff_content = legend_text + diff_content
+
     console.print(Panel(
         diff_content,
         title="[bold cyan]Proposed Changes[/]",
@@ -742,31 +753,43 @@ def _handle_write_flow(changeset, repo_path: str):
         _print_write_report(report)
         return
 
-    # Ask for approval
-    console.print(
-        r"  [bold]Options:[/] [cyan]\[a]pprove all[/] │ "
-        r"[cyan]\[1,2,3][/] approve specific │ [cyan]\[n]one[/]"
-    )
+    # Guided Ask for approval
+    console.print("  [bold]Apply changes?[/]")
+    console.print("    [green][y] Yes[/] (apply all changes)")
+    console.print("    [red][n] No[/] (skip and discard)")
+    console.print("    [cyan][s] Select[/] specific files (e.g., [cyan]1,3[/])")
+    
     try:
         choice = input(Colors.colored("  ❯ ", Colors.GREEN + Colors.BOLD)).strip().lower()
     except (KeyboardInterrupt, EOFError):
         console.print("  [yellow]Cancelled — no files written.[/]")
         return
 
-    if choice in ('a', 'y', 'yes', 'all'):
+    if choice in ('y', 'yes', 'a', 'all'):
         changeset.approve_all()
-    elif choice in ('n', 'no', 'none', 'q', 'quit'):
+    elif choice in ('n', 'no', 'q', 'quit', 'none'):
         console.print("  [dim]Skipped — no files written.[/]")
         return
+    elif choice in ('s', 'select'):
+        console.print("  Enter indices to approve (comma or space separated, e.g. [cyan]1,3[/]):")
+        try:
+            choice_indices = input(Colors.colored("  ❯ ", Colors.GREEN + Colors.BOLD)).strip().lower()
+            indices = [int(x.strip()) - 1 for x in choice_indices.replace(',', ' ').split()]
+            for c in changeset.safe_changes:
+                c.approved = True
+            changeset.approve_by_index(indices)
+        except ValueError:
+            console.print("  [yellow]Invalid input — no files written.[/]")
+            return
     else:
-        # Parse indices: "1,3" or "1 3"
+        # Fallback: support direct entry of indices (e.g. "1,3")
         try:
             indices = [int(x.strip()) - 1 for x in choice.replace(',', ' ').split()]
             for c in changeset.safe_changes:
                 c.approved = True
             changeset.approve_by_index(indices)
         except ValueError:
-            console.print("  [yellow]Invalid input — no files written.[/]")
+            console.print("  [yellow]Invalid choice — no files written.[/]")
             return
 
     # Apply
@@ -1311,6 +1334,7 @@ async def interactive_session(args) -> int:
                         persona=persona_data["persona"],
                         llm_client=smart_client,
                         repo_path=str(repo_path),
+                        verbose=verbose,
                     )
 
                     # Determine the task based on agent type

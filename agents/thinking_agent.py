@@ -60,6 +60,7 @@ class ThinkingAgent:
         repo_path: str,
         tools: Optional[List[Dict]] = None,
         max_steps: int = 30,
+        verbose: bool = False,
     ):
         """Initialize a thinking agent.
 
@@ -70,6 +71,7 @@ class ThinkingAgent:
             repo_path: Path to the repository to analyze
             tools: Tool schemas (defaults to all TOOL_SCHEMAS)
             max_steps: Max tool calls before stopping (safety)
+            verbose: Enable verbose logging of all tool calls and results
         """
         self.name = name
         self.persona = persona
@@ -78,6 +80,7 @@ class ThinkingAgent:
         self.tool_runtime = ToolRuntime(repo_path)
         self.tools = tools or TOOL_SCHEMAS
         self.max_steps = max_steps
+        self.verbose = verbose
         self.messages: List[Dict[str, Any]] = []
         self.step_count = 0
         self.total_tokens = 0
@@ -103,110 +106,165 @@ class ThinkingAgent:
 
         console.print(f"\n  [bold cyan]◆ {self.name} Agent[/] [dim]analyzing...[/]\n")
 
-        for step in range(self.max_steps):
-            self.step_count = step + 1
+        live = None
+        if not self.verbose:
+            from rich.live import Live
+            from rich.spinner import Spinner
+            from rich.text import Text
+            spinner = Spinner("dots", text=Text("Thinking...", style="dim"))
+            live = Live(spinner, console=console, refresh_per_second=10, transient=True)
+            live.start()
 
-            # Call LLM with tools (with rate-limit retry)
-            response = None
-            for attempt in range(4):  # up to 3 retries
+        try:
+            for step in range(self.max_steps):
+                self.step_count = step + 1
+
+                # Call LLM with tools (with rate-limit retry)
+                response = None
+                for attempt in range(4):  # up to 3 retries
+                    try:
+                        response = await self._call_llm()
+                        break
+                    except Exception as e:
+                        err_str = str(e)
+                        is_rate_limit = "429" in err_str or "RESOURCE_EXHAUSTED" in err_str or "rate" in err_str.lower()
+
+                        if is_rate_limit and attempt < 3:
+                            wait_secs = self._extract_retry_delay(err_str) or (3 * (2 ** attempt))
+                            if self.verbose:
+                                console.print(
+                                    f"    {STATUS_WAIT} [yellow]Rate limited "
+                                    f"— waiting {wait_secs:.0f}s[/] "
+                                    f"[dim]({attempt + 1}/3)[/]"
+                                )
+                            else:
+                                spinner.text = Text(f"Rate limited — waiting {wait_secs:.0f}s ({attempt + 1}/3)...", style="yellow")
+                            import asyncio
+                            await asyncio.sleep(wait_secs)
+                            continue
+                        else:
+                            clean_err = self._clean_error_message(e)
+                            logger.error(clean_err, extra={"agent": self.name})
+                            if live:
+                                live.stop()
+                                live = None
+                            console.print(f"    {STATUS_ERR} [red]{clean_err}[/]")
+                            return f"Agent error: {clean_err}"
+
+                if response is None:
+                    if live:
+                        live.stop()
+                        live = None
+                    return "Agent error: no response after retries"
+
+                # Check if model wants to call tools
+                if response.get("tool_calls"):
+                    tool_calls = response["tool_calls"]
+                    for call in tool_calls:
+                        tool_name = call.get("name", "unknown")
+                        arguments = call.get("arguments", {})
+                        call_id = call.get("id", "")
+
+                        # Display tool call (in-progress)
+                        if self.verbose:
+                            self._display_tool_call(tool_name, arguments, executing=True)
+                        else:
+                            # Format arguments concisely
+                            arg_parts = []
+                            for key, val in arguments.items():
+                                val_str = str(val)
+                                if len(val_str) > 30:
+                                    val_str = val_str[:27] + "..."
+                                arg_parts.append(f"{key}={val_str}")
+                            args_display = " ".join(arg_parts)
+                            spinner.text = Text(f"Step {self.step_count}: Calling tool: {tool_name} {args_display}...", style="yellow")
+
+                        # Execute tool (timed)
+                        t0 = time.monotonic()
+                        result = await self.tool_runtime.execute(tool_name, arguments)
+                        call_elapsed = time.monotonic() - t0
+
+                        # Track per-tool stats
+                        is_error = result.startswith("Error")
+                        if tool_name not in self.tool_stats:
+                            self.tool_stats[tool_name] = {
+                                "calls": 0, "errors": 0, "total_ms": 0.0,
+                            }
+                        self.tool_stats[tool_name]["calls"] += 1
+                        self.tool_stats[tool_name]["total_ms"] += call_elapsed * 1000
+                        if is_error:
+                            self.tool_stats[tool_name]["errors"] += 1
+
+                        # Display result summary
+                        if self.verbose:
+                            self._display_tool_result(
+                                tool_name, result, call_elapsed, is_error,
+                            )
+                        else:
+                            elapsed_str = f" ({call_elapsed:.1f}s)" if call_elapsed > 0.1 else ""
+                            status_str = "failed" if is_error else "succeeded"
+                            spinner.text = Text(f"Step {self.step_count}: Tool {tool_name} {status_str}{elapsed_str}", style="green" if not is_error else "red")
+
+                        # Add to conversation
+                        self.messages.append({
+                            "role": "assistant",
+                            "tool_calls": [call],
+                        })
+                        self.messages.append({
+                            "role": "tool",
+                            "tool_call_id": call_id,
+                            "name": tool_name,
+                            "content": result,
+                        })
+                    continue
+
+                # Model produced final answer
+                final_answer = response.get("content", "")
+                
+                # Apply scrubber to clean any reasoning block
                 try:
-                    response = await self._call_llm()
-                    break
-                except Exception as e:
-                    err_str = str(e)
-                    is_rate_limit = "429" in err_str or "RESOURCE_EXHAUSTED" in err_str or "rate" in err_str.lower()
+                    from .think_scrubber import StreamingThinkScrubber
+                    scrubber = StreamingThinkScrubber()
+                    final_answer = scrubber.feed(final_answer) + scrubber.flush()
+                except Exception:
+                    pass
+                
+                elapsed = time.monotonic() - start_time
 
-                    if is_rate_limit and attempt < 3:
-                        wait_secs = self._extract_retry_delay(err_str) or (3 * (2 ** attempt))
-                        console.print(
-                            f"    {STATUS_WAIT} [yellow]Rate limited "
-                            f"— waiting {wait_secs:.0f}s[/] "
-                            f"[dim]({attempt + 1}/3)[/]"
-                        )
-                        import asyncio
-                        await asyncio.sleep(wait_secs)
-                        continue
-                    else:
-                        clean_err = self._clean_error_message(e)
-                        logger.error(clean_err, extra={"agent": self.name})
-                        console.print(f"    {STATUS_ERR} [red]{clean_err}[/]")
-                        return f"Agent error: {clean_err}"
+                if live:
+                    live.stop()
+                    live = None
 
-            if response is None:
-                return "Agent error: no response after retries"
+                # Display session summary
+                self._display_session_summary(elapsed)
 
-            # Check if model wants to call tools
-            if response.get("tool_calls"):
-                tool_calls = response["tool_calls"]
-                for call in tool_calls:
-                    tool_name = call.get("name", "unknown")
-                    arguments = call.get("arguments", {})
-                    call_id = call.get("id", "")
+                # Display the report
+                self._display_report(final_answer)
 
-                    # Display tool call (in-progress)
-                    self._display_tool_call(tool_name, arguments, executing=True)
+                logger.info(
+                    f"{self.name} agent completed: {self.step_count} steps, "
+                    f"{elapsed:.1f}s",
+                    extra={"agent": self.name},
+                )
 
-                    # Execute tool (timed)
-                    t0 = time.monotonic()
-                    result = await self.tool_runtime.execute(tool_name, arguments)
-                    call_elapsed = time.monotonic() - t0
+                return final_answer
 
-                    # Track per-tool stats
-                    is_error = result.startswith("Error")
-                    if tool_name not in self.tool_stats:
-                        self.tool_stats[tool_name] = {
-                            "calls": 0, "errors": 0, "total_ms": 0.0,
-                        }
-                    self.tool_stats[tool_name]["calls"] += 1
-                    self.tool_stats[tool_name]["total_ms"] += call_elapsed * 1000
-                    if is_error:
-                        self.tool_stats[tool_name]["errors"] += 1
-
-                    # Display result summary
-                    self._display_tool_result(
-                        tool_name, result, call_elapsed, is_error,
-                    )
-
-                    # Add to conversation
-                    self.messages.append({
-                        "role": "assistant",
-                        "tool_calls": [call],
-                    })
-                    self.messages.append({
-                        "role": "tool",
-                        "tool_call_id": call_id,
-                        "name": tool_name,
-                        "content": result,
-                    })
-                continue
-
-            # Model produced final answer
-            final_answer = response.get("content", "")
+            # Safety limit reached
             elapsed = time.monotonic() - start_time
-
-            # Display session summary
-            self._display_session_summary(elapsed)
-
-            # Display the report
-            self._display_report(final_answer)
-
-            logger.info(
-                f"{self.name} agent completed: {self.step_count} steps, "
-                f"{elapsed:.1f}s",
-                extra={"agent": self.name},
+            msg = (
+                f"{self.name} agent reached max steps ({self.max_steps}) "
+                f"after {elapsed:.1f}s. Partial results may be available "
+                f"in .contextual-architect/reports/"
             )
+            if live:
+                live.stop()
+                live = None
+            console.print(f"\n  [yellow]⚠️ {msg}[/]")
+            return msg
 
-            return final_answer
-
-        # Safety limit reached
-        elapsed = time.monotonic() - start_time
-        msg = (
-            f"{self.name} agent reached max steps ({self.max_steps}) "
-            f"after {elapsed:.1f}s. Partial results may be available "
-            f"in .contextual-architect/reports/"
-        )
-        console.print(f"\n  [yellow]⚠️ {msg}[/]")
-        return msg
+        finally:
+            if live is not None:
+                live.stop()
 
     # ── LLM Interaction ───────────────────────────────────
 
