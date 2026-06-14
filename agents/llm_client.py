@@ -91,21 +91,21 @@ class LLMResponse:
 
 def _repair_message_sequence(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Sanitize and repair a list of conversation messages.
-    
+
     Ensures strict alternation (user/tool -> assistant -> user/tool) and
     prunes invalid structures or illegal keys before sending to strict APIs.
     """
     if not messages:
         return []
-        
+
     repaired = []
-    
+
     # Filter out system messages
     non_system = [m for m in messages if m.get("role") != "system"]
-    
+
     # Track open tool calls to insert stubs for missing results
     pending_tool_calls = {}  # id -> tool_name
-    
+
     for msg in non_system:
         # Create a clean copy and strip unrecognized keys
         clean_msg = {
@@ -118,16 +118,16 @@ def _repair_message_sequence(messages: List[Dict[str, Any]]) -> List[Dict[str, A
             clean_msg["tool_call_id"] = msg["tool_call_id"]
         if "name" in msg:
             clean_msg["name"] = msg["name"]
-            
+
         role = clean_msg["role"]
-        
+
         # Track tool calls made by assistant
         if role == "assistant" and "tool_calls" in clean_msg:
             for tc in clean_msg["tool_calls"]:
                 tc_id = tc.get("id")
                 if tc_id:
                     pending_tool_calls[tc_id] = tc.get("name", "unknown")
-                    
+
         # Check if this is a tool result
         if role == "tool":
             tc_id = clean_msg.get("tool_call_id")
@@ -149,12 +149,12 @@ def _repair_message_sequence(messages: List[Dict[str, Any]]) -> List[Dict[str, A
                     }]
                 })
                 clean_msg["tool_call_id"] = dummy_id
-                
+
         # Handle consecutive roles
         if repaired:
             last_msg = repaired[-1]
             last_role = last_msg["role"]
-            
+
             if role == last_role:
                 # Merge consecutive identical roles
                 if role == "user":
@@ -169,7 +169,7 @@ def _repair_message_sequence(messages: List[Dict[str, Any]]) -> List[Dict[str, A
                 elif role == "tool":
                     # Keep consecutive tool messages
                     pass
-            
+
             # Strict alternation
             if last_role in ("user", "tool") and role in ("user", "tool"):
                 # Insert a dummy assistant message to alternate
@@ -179,9 +179,9 @@ def _repair_message_sequence(messages: List[Dict[str, Any]]) -> List[Dict[str, A
                 })
             elif last_role == "assistant" and role == "assistant":
                 continue
-                
+
         repaired.append(clean_msg)
-        
+
     # Insert dummy results for any tool calls that were never answered
     for tc_id, tool_name in list(pending_tool_calls.items()):
         repaired.append({
@@ -190,7 +190,7 @@ def _repair_message_sequence(messages: List[Dict[str, Any]]) -> List[Dict[str, A
             "name": tool_name,
             "content": "Error: Tool execution failed to return a result.",
         })
-        
+
     return repaired
 
 
@@ -590,7 +590,7 @@ class AnthropicClient(BaseLLMClient):
 
         if tool_calls:
             return {"tool_calls": tool_calls}
-            
+
         content = "\n".join(text_parts)
         try:
             from .think_scrubber import StreamingThinkScrubber

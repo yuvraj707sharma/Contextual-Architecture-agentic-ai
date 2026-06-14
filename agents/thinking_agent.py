@@ -220,7 +220,7 @@ class ThinkingAgent:
 
                 # Model produced final answer
                 final_answer = response.get("content", "")
-                
+
                 # Apply scrubber to clean any reasoning block
                 try:
                     from .think_scrubber import StreamingThinkScrubber
@@ -228,7 +228,7 @@ class ThinkingAgent:
                     final_answer = scrubber.feed(final_answer) + scrubber.flush()
                 except Exception:
                     pass
-                
+
                 elapsed = time.monotonic() - start_time
 
                 if live:

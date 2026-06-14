@@ -8,7 +8,6 @@ so MACRO can learn from history and improve over time.
 from __future__ import annotations
 
 import json
-import os
 import sqlite3
 import threading
 from collections import Counter

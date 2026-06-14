@@ -246,7 +246,7 @@ def get_or_prompt_key(provider_id: str, env_var: str, signup_url: str) -> Option
 
     # Prompt user
     print(f"  Get your API key at: {signup_url}")
-    return _input_text(f"Paste your API key")
+    return _input_text("Paste your API key")
 
 
 def get_preset_config(choice: str, api_key: Optional[str] = None, second_key: Optional[str] = None) -> dict:
@@ -476,10 +476,10 @@ def run_setup():
         # Google Gemini Hybrid
         print("  [Google Gemini Hybrid Setup]")
         api_key = get_or_prompt_key("google", "GOOGLE_API_KEY", "https://aistudio.google.com/apikey")
-        
+
         # Test connection
         _print_step(3, total_steps, "Testing Connection")
-        print(f"  Testing Google Gemini API key (using gemini-2.5-flash)...", end=" ", flush=True)
+        print("  Testing Google Gemini API key (using gemini-2.5-flash)...", end=" ", flush=True)
         ok, msg = test_api_key("google", api_key, "gemini-2.5-flash")
         if ok:
             print(f"OK ({msg})")
@@ -488,17 +488,17 @@ def run_setup():
             print(f"  Error: {msg}")
             if _input_choice("Save anyway and fix later? (y/n)", ["y", "n", "Y", "N"], "n").lower() == "n":
                 sys.exit(1)
-                
+
         config_params = get_preset_config("1", api_key)
 
     elif choice == "2":
         # Anthropic Claude Hybrid
         print("  [Anthropic Claude Hybrid Setup]")
         api_key = get_or_prompt_key("anthropic", "ANTHROPIC_API_KEY", "https://console.anthropic.com/")
-        
+
         # Test connection
         _print_step(3, total_steps, "Testing Connection")
-        print(f"  Testing Anthropic API key (using claude-3-5-haiku-20241022)...", end=" ", flush=True)
+        print("  Testing Anthropic API key (using claude-3-5-haiku-20241022)...", end=" ", flush=True)
         ok, msg = test_api_key("anthropic", api_key, "claude-3-5-haiku-20241022")
         if ok:
             print(f"OK ({msg})")
@@ -507,17 +507,17 @@ def run_setup():
             print(f"  Error: {msg}")
             if _input_choice("Save anyway and fix later? (y/n)", ["y", "n", "Y", "N"], "n").lower() == "n":
                 sys.exit(1)
-                
+
         config_params = get_preset_config("2", api_key)
 
     elif choice == "3":
         # OpenAI Hybrid
         print("  [OpenAI Hybrid Setup]")
         api_key = get_or_prompt_key("openai", "OPENAI_API_KEY", "https://platform.openai.com/api-keys")
-        
+
         # Test connection
         _print_step(3, total_steps, "Testing Connection")
-        print(f"  Testing OpenAI API key (using gpt-4o-mini)...", end=" ", flush=True)
+        print("  Testing OpenAI API key (using gpt-4o-mini)...", end=" ", flush=True)
         ok, msg = test_api_key("openai", api_key, "gpt-4o-mini")
         if ok:
             print(f"OK ({msg})")
@@ -526,7 +526,7 @@ def run_setup():
             print(f"  Error: {msg}")
             if _input_choice("Save anyway and fix later? (y/n)", ["y", "n", "Y", "N"], "n").lower() == "n":
                 sys.exit(1)
-                
+
         config_params = get_preset_config("3", api_key)
 
     elif choice == "4":
@@ -534,30 +534,30 @@ def run_setup():
         print("  [Multi-Provider Setup (Groq + Gemini)]")
         groq_key = get_or_prompt_key("groq", "GROQ_API_KEY", "https://console.groq.com/keys")
         gemini_key = get_or_prompt_key("google", "GOOGLE_API_KEY", "https://aistudio.google.com/apikey")
-        
+
         # Test connections
         _print_step(3, total_steps, "Testing Connections")
-        
-        print(f"  Testing Groq API key (using llama-3.3-70b-versatile)...", end=" ", flush=True)
+
+        print("  Testing Groq API key (using llama-3.3-70b-versatile)...", end=" ", flush=True)
         ok1, msg1 = test_api_key("groq", groq_key, "llama-3.3-70b-versatile")
         if ok1:
             print(f"OK ({msg1})")
         else:
             print("FAILED")
             print(f"  Error: {msg1}")
-            
-        print(f"  Testing Google Gemini API key (using gemini-2.5-pro)...", end=" ", flush=True)
+
+        print("  Testing Google Gemini API key (using gemini-2.5-pro)...", end=" ", flush=True)
         ok2, msg2 = test_api_key("google", gemini_key, "gemini-2.5-pro")
         if ok2:
             print(f"OK ({msg2})")
         else:
             print("FAILED")
             print(f"  Error: {msg2}")
-            
+
         if not (ok1 and ok2):
             if _input_choice("Save anyway and fix later? (y/n)", ["y", "n", "Y", "N"], "n").lower() == "n":
                 sys.exit(1)
-                
+
         config_params = get_preset_config("4", groq_key, gemini_key)
 
     elif choice == "5":

@@ -758,7 +758,7 @@ def _handle_write_flow(changeset, repo_path: str):
     console.print("    [green][y] Yes[/] (apply all changes)")
     console.print("    [red][n] No[/] (skip and discard)")
     console.print("    [cyan][s] Select[/] specific files (e.g., [cyan]1,3[/])")
-    
+
     try:
         choice = input(Colors.colored("  ❯ ", Colors.GREEN + Colors.BOLD)).strip().lower()
     except (KeyboardInterrupt, EOFError):
