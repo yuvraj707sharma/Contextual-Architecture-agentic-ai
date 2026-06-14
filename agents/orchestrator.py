@@ -29,6 +29,7 @@ from .impact_analyzer import ImpactAnalyzer
 from .implementer import ImplementerAgent
 from .llm_client import BaseLLMClient
 from .logger import PipelineMetrics, get_logger, timed_operation
+from .memory import MemoryStore
 from .pipeline_report import PipelineReport
 from .planner import PlannerAgent
 from .pr_search import PRSearcher
@@ -37,6 +38,7 @@ from .reasoning_display import ReasoningDisplay
 from .reviewer import ReviewerAgent, ValidationResult
 from .safe_writer import ChangeSet, SafeCodeWriter
 from .shell_executor import ShellExecutor
+from .skills import SkillManager
 from .style_fingerprint import StyleAnalyzer
 from .test_generator import TestGeneratorAgent
 from .trace_logger import TraceLogger
@@ -190,6 +192,18 @@ class Orchestrator:
         # Utilities
         self.feedback = FeedbackCollector()
         self.reasoning = ReasoningDisplay(streaming=True)
+
+        # Procedural Memory (Skills)
+        self.skill_manager = SkillManager(
+            repo_dir=Path(repo_path) / ".contextual-architect" / "skills" if repo_path else None,
+        )
+
+        # Session Memory (SQLite)
+        try:
+            self.memory = MemoryStore()
+        except Exception as e:
+            self.logger.debug(f"Session memory disabled: {e}")
+            self.memory = None
 
         # PR Search
         self.pr_searcher = PRSearcher()
@@ -631,6 +645,27 @@ class Orchestrator:
         # by the Implementer on every retry attempt.
 
         self.reasoning.emit("planner", f"Planning: {user_request[:80]}...")
+
+        # ── SKILL MATCHING (pre-planner) ─────────────────────────
+        # Check if we've seen a similar request before and have a cached plan.
+        matched_skill = None
+        try:
+            matched_skills = self.skill_manager.find(user_request, language=language, top_k=1)
+            if matched_skills:
+                matched_skill = matched_skills[0]
+                self.skill_manager.apply_to_context(matched_skill, context.prior_context)
+                self.reasoning.emit(
+                    "planner",
+                    f"Skill matched: '{matched_skill.name}' "
+                    f"(success rate: {matched_skill.success_rate:.0%})",
+                )
+                self.logger.info(
+                    f"Skill '{matched_skill.name}' injected into planner context",
+                    extra={"agent": "skills"},
+                )
+        except Exception as e:
+            self.logger.debug(f"Skill matching skipped: {e}")
+
         self.reasoning.start_spinner("Creating implementation plan...")
 
         self.logger.info(
@@ -1123,6 +1158,69 @@ class Orchestrator:
 
         # Store reasoning in result for display
         result.context["reasoning"] = self.reasoning.get_summary()
+
+        # ── SESSION MEMORY RECORDING ─────────────────────────────
+        # Record every pipeline run — success or failure — in SQLite
+        # so the Historian can learn from past sessions.
+        try:
+            if self.memory:
+                target_files = []
+                if result.changeset:
+                    target_files = [c.file_path for c in result.changeset.changes]
+                session_id = self.memory.record_session(
+                    repo_path=repo_path,
+                    user_request=user_request,
+                    language=language,
+                    plan_summary=result.agent_summaries.get("planner", ""),
+                    success=result.success,
+                    duration_ms=int(metrics.total_duration_ms),
+                    target_files=target_files,
+                    agent_summaries={
+                        k: (v if isinstance(v, str) else str(v))
+                        for k, v in result.agent_summaries.items()
+                    },
+                    error=result.errors[0] if result.errors else None,
+                )
+                result.context["session_id"] = session_id
+        except Exception as e:
+            self.logger.debug(f"Session memory recording skipped: {e}")
+
+        # ── AUTO-CREATE SKILL (on success) ───────────────────────
+        # If the pipeline succeeded, extract a reusable skill.
+        if result.success:
+            try:
+                plan_data = context.prior_context.get("plan", {})
+                if plan_data and isinstance(plan_data, dict):
+                    file_patterns = []
+                    if result.changeset:
+                        file_patterns = [c.file_path for c in result.changeset.changes]
+                    skill = self.skill_manager.create_from_run(
+                        user_request=user_request,
+                        plan_data=plan_data,
+                        language=language,
+                        file_patterns=file_patterns,
+                    )
+                    self.skill_manager.save(skill)
+                    self.logger.info(
+                        f"Auto-created skill: '{skill.name}'",
+                        extra={"agent": "skills"},
+                    )
+                    # If we used a matched skill, record success
+                    if context.prior_context.get("skill_name"):
+                        self.skill_manager.record_outcome(
+                            context.prior_context["skill_name"], success=True
+                        )
+            except Exception as e:
+                self.logger.debug(f"Skill creation skipped: {e}")
+        else:
+            # Record failure if a skill was used
+            try:
+                if context.prior_context.get("skill_name"):
+                    self.skill_manager.record_outcome(
+                        context.prior_context["skill_name"], success=False
+                    )
+            except Exception:
+                pass
 
         return result
 

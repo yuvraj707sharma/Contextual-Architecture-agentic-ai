@@ -2,14 +2,16 @@
 Tests for agent configuration and setup wizard logic.
 """
 
-import os
 import json
+import os
 import tempfile
-import pytest
 from unittest.mock import patch
 
+import pytest
+
 from ..config import AgentConfig
-from ..setup_wizard import test_api_key as verify_api_key, get_preset_config
+from ..setup_wizard import get_preset_config
+from ..setup_wizard import test_api_key as verify_api_key
 
 
 class TestAgentConfig:

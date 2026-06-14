@@ -5,7 +5,7 @@ unwanted reasoning blocks (like <think>...) from cluttering developer output
 or breaking JSON parsing, especially when tags are split across stream deltas.
 """
 
-from typing import List, Tuple, Optional
+from typing import List, Optional, Tuple
 
 
 class StreamingThinkScrubber:

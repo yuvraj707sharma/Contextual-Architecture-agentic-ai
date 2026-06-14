@@ -25,12 +25,11 @@ from typing import Dict, List, Optional
 
 _HAS_RICH = False
 try:
+    from rich import box
     from rich.console import Console
     from rich.live import Live
-    from rich.table import Table
     from rich.panel import Panel
     from rich.text import Text
-    from rich import box
     _HAS_RICH = True
 except ImportError:
     pass
@@ -100,8 +99,10 @@ class ReasoningDisplay:
         self.verbose = verbose
         self.steps: List[ReasoningStep] = []
         self._current_agent: str = ""
-        self._suppress = False
-        self._console = Console(stderr=True) if _HAS_RICH else None
+        # Suppress all TUI in CI/quiet mode (set by --quiet / -z flag)
+        import os
+        self._suppress = os.environ.get("MACRO_QUIET") == "1"
+        self._console = Console(stderr=True) if (_HAS_RICH and not self._suppress) else None
 
         # Spinner state
         self._spinner_thread: Optional[threading.Thread] = None
@@ -113,7 +114,7 @@ class ReasoningDisplay:
         self._live: Optional[Live] = None
         self._start_time: float = 0.0
         self._current_log_lines: List[str] = []
-        
+
         self.steps_info = [
             {"name": "Scan", "agents": ["scanner"], "status": "pending"},
             {"name": "Graph", "agents": ["graph"], "status": "pending"},
@@ -155,7 +156,7 @@ class ReasoningDisplay:
         for step in self.steps_info:
             symbol = symbols[step["status"]]
             name = step["name"]
-            
+
             if step["status"] == "running":
                 name_style = "bold yellow"
             elif step["status"] == "success":
@@ -164,26 +165,26 @@ class ReasoningDisplay:
                 name_style = "bold red"
             else:
                 name_style = "dim"
-                
+
             stepper_parts.append(f"{symbol} [{name_style}]{name}[/]")
-            
+
         stepper_line = "  ➔  ".join(stepper_parts)
-        
+
         # Activity line
         elapsed = time.time() - self._start_time if self._start_time else 0
         activity_text = f"[bold cyan]Activity:[/] {self._spinner_message or 'Processing...'} [dim]({elapsed:.1f}s)[/]"
-        
+
         # Build body
         body = Text()
         body.append("\n")
         body.append(Text.from_markup(f"  {stepper_line}\n\n"))
         body.append(Text.from_markup(f"  {activity_text}\n\n"))
-        
+
         if self._current_log_lines:
             body.append(Text.from_markup("  [dim]Latest logs:[/]\n"))
             for line in self._current_log_lines:
                 body.append(Text.from_markup(f"   {line}\n"))
-            
+
         return Panel(
             body,
             title="[bold cyan]MACRO Pipeline Dashboard[/]",
@@ -198,13 +199,13 @@ class ReasoningDisplay:
             return
         if self._live is not None:
             return
-        
+
         # Reset statuses
         for step in self.steps_info:
             step["status"] = "pending"
         self._current_log_lines = []
         self._start_time = time.time()
-        
+
         self._live = Live(
             self._render_dashboard(),
             console=self._console or Console(stderr=True),
@@ -222,7 +223,7 @@ class ReasoningDisplay:
                     step["status"] = "success" if success else "failed"
                 elif step["status"] == "pending":
                     step["status"] = "success" if success else "pending"
-            
+
             self._live.update(self._render_dashboard())
             self._live.stop()
             self._live = None
@@ -246,16 +247,16 @@ class ReasoningDisplay:
         if self.streaming and not self.verbose and _HAS_RICH:
             if self._live is None:
                 self._start_live_display()
-            
+
             self._update_stepper_status(agent, message)
-            
+
             # Add to the log lines buffer
-            style_info = AGENT_STYLES.get(agent, DEFAULT_STYLE)
+            AGENT_STYLES.get(agent, DEFAULT_STYLE)
             log_line = f"[dim]▸ {agent.capitalize()}: {message}[/]"
             self._current_log_lines.append(log_line)
             if len(self._current_log_lines) > 4:
                 self._current_log_lines.pop(0)
-                
+
             if self._live is not None:
                 self._live.update(self._render_dashboard())
             return
