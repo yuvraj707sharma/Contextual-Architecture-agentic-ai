@@ -3,10 +3,10 @@
 <p align="center">An AI coding agent that writes production-grade code by learning your project's conventions, architecture, and evolution.</p>
 
 <p align="center">
-  <a href="#quick-install"><img src="https://img.shields.io/badge/tests-420%20passing-brightgreen" alt="Tests"></a>
+  <a href="#quick-install"><img src="https://img.shields.io/badge/tests-420%2B%20passing-brightgreen" alt="Tests"></a>
   <a href="#"><img src="https://img.shields.io/badge/python-3.10%2B-blue" alt="Python"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL%20v3-blue.svg" alt="License: AGPL v3"></a>
-  <a href="#"><img src="https://img.shields.io/badge/pipeline-12%20stages-orange" alt="Pipeline"></a>
+  <a href="#"><img src="https://img.shields.io/badge/pipeline-Multi--Stage-orange" alt="Pipeline"></a>
   <a href="#"><img src="https://img.shields.io/badge/providers-7%20supported-purple" alt="Providers"></a>
 </p>
 
@@ -18,10 +18,12 @@
 - **Zero config**: `cd` into your project, type `macro`. That's it. Language auto-detected, interactive mode auto-starts.
 - **Works on any GitHub repo**: `macro --github owner/repo` clones and analyzes any public or private repository.
 - **7 LLM providers**: Google Gemini, Groq, OpenAI, Anthropic, DeepSeek, Ollama, Mock.
-- **12-stage pipeline**: Scan → graph → plan → validate → implement → review → test → write.
+- **Advanced Context & Memory**: Features intelligent context budgeting and memory layers that prevent token limits from being blown while retaining crucial project history.
+- **Thinking & Reasoning Agents**: Harnesses dedicated thinking steps, traces, and reasoning scrubbers to tackle highly complex architectural problems.
+- **Extensible Skills & Plugins**: Equipped with a robust tool runtime and skills framework.
+- **Specialized Personas**: Agents adopt context-specific personas (e.g. Staff+ Engineer, Security Specialist) based on the task.
 - **Code graph intelligence**: AST-based dependency graph finds callers, affected files, and impact chains.
 - **Style-aware**: Learns your naming conventions, indentation, logging patterns, and error handling.
-- **Senior-level code**: Every agent thinks as a Staff+ Engineer with a Security Specialist persona.
 - **Permission-based**: Never writes a file without showing you the diff and asking first.
 - **Self-hosted**: Runs fully offline with Ollama. Your code never leaves your machine.
 - **Open source**: AGPL v3 licensed.
@@ -31,11 +33,17 @@
 ```bash
 git clone https://github.com/yuvraj707sharma/Contextual-Architecture-agentic-ai.git
 cd Contextual-Architecture-agentic-ai
-pip install -e ".[dev]"
+pip install -e ".[dev,all]"
 ```
 
 ### Set an API key (pick one — Gemini and Groq are free)
 
+You can run the interactive setup wizard to configure your environment:
+```bash
+macro --setup
+```
+
+Or manually set the environment variables:
 ```bash
 # Linux / macOS
 export GROQ_API_KEY=your_key_here
@@ -43,8 +51,6 @@ export GROQ_API_KEY=your_key_here
 # Windows CMD (no quotes!)
 set GROQ_API_KEY=your_key_here
 ```
-
-Or run the interactive setup wizard: `macro --setup`
 
 ## Usage
 
@@ -100,7 +106,7 @@ macro --provider groq --planner-provider google
 
 Two modes — auto-detected from your input:
 - **Chat**: "What does @auth.py do?" → analyzes your code and answers
-- **Build**: "Add JWT authentication" → runs the full 12-stage pipeline
+- **Build**: "Add JWT authentication" → runs the full implementation pipeline
 
 Use `@filename` to target existing files: `Add booking to @pricing.py`
 
@@ -124,18 +130,20 @@ User Request
     |-- Project Scanner ────────  Detects frameworks, runtime, production env
     |-- Graph Builder ──────────  AST-based code graph (calls, imports, inheritance)
     |
+    |-- [Context & Memory] ────+  Context Budgeting + Long-term Memory Management
+    |
     |-- [Parallel Discovery] ──+
     |   |-- Historian           |  Detects conventions, anti-patterns
     |   |-- Architect           |  Maps structure, finds utilities
     |   |-- Style Analyzer      |  Extracts naming, indentation, logging
     |   |-- PR Searcher         |  Finds relevant past PRs
     |                           |
-    |-- Clarification ─────────+  Detects auth/framework/DB conflicts
+    |-- Clarification ─────────+  Interactive Feedback Loop for missing intent
     |-- Impact Analyzer            Uses code graph to find affected files
     |-- Planner ───────────────+  Creates structured plan + acceptance criteria
     |-- Alignment                  Validates plan against user intent
     |                           
-    |-- [Implementation Loop] ─+
+    |-- [Implementation Loop] ─+  Powered by Thinking Agents + Skills
     |   |-- Implementer         |  Generates code with full agent context
     |   |-- Reviewer            |  Validates syntax, security, linting
     |   |-- (retry if rejected) |  Re-reads plan from disk (Manus AI technique)
@@ -179,7 +187,7 @@ Auto-detection: Set any `*_API_KEY` env var and MACRO finds the right provider.
 ```
 contextual-architect/
 ├── agents/                     # Core multi-agent pipeline
-│   ├── orchestrator.py         # Coordinates all 12 stages
+│   ├── orchestrator.py         # Coordinates all stages
 │   ├── historian.py            # Convention detection
 │   ├── architect.py            # Structure mapping
 │   ├── planner.py              # Structured planning
@@ -194,8 +202,18 @@ contextual-architect/
 │   ├── github_resolver.py      # --github clone + language detection
 │   ├── interactive.py          # Rich interactive CLI
 │   ├── llm_client.py           # 7 provider support
-│   ├── system_prompts.py       # Senior Engineer persona prompts
-│   └── tests/                  # 420 unit tests
+│   ├── system_prompts.py       # Base prompt definitions
+│   ├── agent_personas.py       # Specialized agent roles (e.g., Security, Staff)
+│   ├── thinking_agent.py       # Advanced reasoning loop
+│   ├── think_scrubber.py       # Formats and cleans thought processes
+│   ├── reasoning_display.py    # UI for agent reasoning traces
+│   ├── context_budget.py       # Intelligent token management
+│   ├── memory.py               # Long-term and short-term conversation memory
+│   ├── feedback.py             # User interactive feedback loops
+│   ├── plugins.py              # Extensible plugin manager
+│   ├── skills.py               # Reusable agent skills
+│   ├── setup_wizard.py         # Interactive environment configuration
+│   └── tests/                  # 420+ unit tests
 ├── data_pipeline/              # PR evolution data collection
 ├── rag/                        # RAG layer (ChromaDB + AST chunking)
 ├── docs/                       # Getting started guide
